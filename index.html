@@ -552,16 +552,16 @@ function drawArchive(id,cx,cy){
   else{ctx.fillStyle='#f4efe4';ctx.save();ctx.translate(cx,y);ctx.rotate(-.15);ctx.fillRect(-8,-10,16,20);ctx.strokeStyle='#8a8a9a';ctx.lineWidth=1;ctx.beginPath();for(let i=0;i<4;i++){ctx.moveTo(-5,-6+i*4);ctx.lineTo(5,-6+i*4);}ctx.stroke();ctx.restore();}
   ctx.fillStyle="#7b3fc4";ctx.beginPath();ctx.arc(cx+12,y-12,7.5,0,7);ctx.fill();ctx.strokeStyle="#f0dcff";ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle="#fff";ctx.font="800 11px \"M PLUS Rounded 1c\",sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("a",cx+12,y-13);ctx.textBaseline="alphabetic";
 }
-function archiveScreen(back){
-  const got=new Set(META.archives),total=ARCHIVES.length;
+function archiveScreen(back,all=false){
+  const got=all?new Set(ARCHIVES.map(a=>a.id)):new Set(META.archives),total=ARCHIVES.length; // all: test-menu peek, saves nothing
   const rows=[];
   TIER_NAMES.forEach((nm,ti)=>{rows.push(`<div class="arch-h">${nm}</div>`);
     for(const a of ARCHIVES.filter(x=>!x.secret&&x.tier===ti))rows.push(got.has(a.id)?`<button class="arch-i" data-id="${a.id}"><span class="k">${KIND[a.kind]}</span>${esc(a.title)}</button>`:`<div class="arch-i lock"><span class="k">？</span>？？？</div>`);});
   rows.push(`<div class="arch-h">秘録</div>`);
   for(const a of ARCHIVES.filter(x=>x.secret))rows.push(got.has(a.id)?`<button class="arch-i sec" data-id="${a.id}"><span class="k">${KIND[a.kind]}</span>${esc(a.title)}</button>`:`<div class="arch-i lock"><span class="k">？</span>？？？ <small>条件：${esc(a.hint)}</small></div>`);
-  show(`<h2>アーカイブ</h2><p class="hint">集めた記録 ${got.size} / ${total}。深く潜るほど、都の真相に近い記録が見つかる。</p><div class="arch-list">${rows.join('')}</div><button class="btn" id="archback">もどる</button>`);
+  show(`<h2>アーカイブ${all?'（全閲覧）':''}</h2><p class="hint">${all?'テスト用にすべての記録を表示中（収集状況は変わりません）。':''}集めた記録 ${all?META.archives.length:got.size} / ${total}。深く潜るほど、都の真相に近い記録が見つかる。</p><div class="arch-list">${rows.join('')}</div><button class="btn" id="archback">もどる</button>`);
   document.querySelectorAll('.arch-i[data-id]').forEach(b=>b.onclick=()=>{const a=ARCHIVES.find(x=>x.id===b.dataset.id);
-    show(`<p class="hint">${KIND[a.kind]}${a.secret?'':' ・ '+TIER_NAMES[a.tier]}</p><h2>${esc(a.title)}</h2><p class="arch-text">${esc(a.text)}</p><button class="btn" id="archback">一覧へ</button>`);$('archback').onclick=()=>archiveScreen(back);});
+    show(`<p class="hint">${KIND[a.kind]}${a.secret?'':' ・ '+TIER_NAMES[a.tier]}</p><h2>${esc(a.title)}</h2><p class="arch-text">${esc(a.text)}</p><button class="btn" id="archback">一覧へ</button>`);$('archback').onclick=()=>archiveScreen(back,all);});
   $('archback').onclick=back;
 }
 function trophyScreen(back){
@@ -571,7 +571,9 @@ function trophyScreen(back){
 }
 const NEW_GIMMICK=['','鍵の扉','タイマー扉','回転壁'];
 /* exit door of a boss hall: shuts behind you, holds the flood for a while, then bursts */
-function closeBehind(d){d.open=false;d.perm=false;d.holding=true;d.hold=8;S.tile.set(K(d.x,d.y),2);tone(180,.3,'square',.06,-60);bannerShow('','扉が閉まった！',1.2);}
+// the 8s of holding only starts counting once the flood is actually pressing on the door
+const doorWet=d=>DIRS.some(([dx,dy])=>{const a=S.arr.get(K(d.x+dx,d.y+dy));return a!==undefined&&a<=S.wt;});
+function closeBehind(d){d.open=false;d.perm=false;d.holding=true;d.hold=8;d.wet=false;S.tile.set(K(d.x,d.y),2);tone(180,.3,'square',.06,-60);bannerShow('','扉が閉まった！',1.2);}
 function breakDoor(d){
   d.holding=false;d.broken=true;d.open=true;d.perm=true;S.tile.set(K(d.x,d.y),0);
   for(const [dx,dy] of DIRS){const a=S.arr.get(K(d.x+dx,d.y+dy));if(a!==undefined&&a<=S.wt)pushWater(d.x,d.y,S.wt+.2);}
@@ -710,7 +712,9 @@ function bossTestMenu(){
   <div class="row ss-row"><label class="hint bt-zone">モード<select id="ssmode"><option value="story">ストーリー</option><option value="endless">エンドレス</option></select></label>
   <label class="hint bt-zone">開始する階<select id="ssfloor">${Array.from({length:30},(_,i)=>`<option value="${i+1}">B${i+1}F${(i%5===4)?'（番人）':''}${i===24?'★':''}</option>`).join('')}</select></label></div>
   <button class="btn" id="ssgo">この階から始める</button>
+  <button class="sbtn" id="tarch">アーカイブ全閲覧（${ARCHIVES.length}件）</button>
   <button class="sbtn" id="btback">もどる</button>`);
+  $('tarch').onclick=()=>archiveScreen(bossTestMenu,true);
   $('ssgo').onclick=()=>{testCats=+$('tcats').value;startStageSelect(+$('ssfloor').value,$('ssmode').value==='story');};
   document.querySelectorAll('.bt').forEach(b=>b.onclick=()=>b.dataset.t==='great'?(testCats=+$('tcats').value,startGreatTest($('gphase').value)):startBossTest(b.dataset.t,+$('btzone').value));
   $('btback').onclick=()=>titleScreen();
@@ -1712,14 +1716,14 @@ function queue(d){if(!S||S.state!=='play')return;const P=S.P;
 const KEYS={ArrowUp:[0,-1],KeyW:[0,-1],ArrowRight:[1,0],KeyD:[1,0],ArrowDown:[0,1],KeyS:[0,1],ArrowLeft:[-1,0],KeyA:[-1,0]};
 addEventListener('keydown',e=>{
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'))return; // typing a name
-  if(S&&S.radio&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();radioNext();return;}
+  if(S&&S.radio&&!paused&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();radioNext();return;}
   if(S&&S.state==='continue'){if(e.code==='Enter'||e.code==='Space'){e.preventDefault();continueStory();}else if(e.code==='Escape'){e.preventDefault();giveUpContinue();}return;}
   if(KEYS[e.code]){e.preventDefault();initAudio();queue(KEYS[e.code]);}
   else if(/^(Digit|Numpad)[1-6]$/.test(e.code)&&S&&S.shopOpen){e.preventDefault();buy(+e.code.slice(-1)-1);}
   else if((e.code==='Space'||e.code==='Enter'||e.code==='Escape')&&S&&S.state==='cut'){e.preventDefault();endCut();}
   else if(e.code==='Space'||e.code==='Enter'){const b=document.querySelector('#card .btn');if(!$('overlay').hidden&&b){e.preventDefault();b.click();}}
   else if(e.code==='KeyM')toggleMute();
-  else if((e.code==='KeyP'||e.code==='Escape')&&S&&S.state==='play')togglePause();
+  else if((e.code==='KeyP'||e.code==='Escape')&&S&&(S.state==='play'||S.state==='radio'||S.state==='intro'))togglePause();
 });
 const screenDir=(dx,dy)=>dx>=0&&dy<0?[0,-1]:dx>=0?[1,0]:dy>=0?[0,1]:[-1,0];
 let ptr=null;
@@ -1783,9 +1787,11 @@ function deadScreen(){
   <button class="btn" id="retry">もう一度潜る</button>`);
   $('retry').onclick=()=>{hide();closeShop();newRun();};
 }
-function pauseMenu(){show(`<h2>一時停止</h2><button class="btn" id="res">再開</button><div class="row"><button class="sbtn" id="parch">アーカイブ（${META.archives.length}/${ARCHIVES.length}）</button><button class="sbtn" id="ptro">トロフィー（${META.trophies.length}/${TROPHIES.length}）</button></div>`);
+function pauseMenu(){show(`<h2>一時停止</h2><button class="btn" id="res">再開</button><div class="row"><button class="sbtn" id="parch">アーカイブ（${META.archives.length}/${ARCHIVES.length}）</button><button class="sbtn" id="ptro">トロフィー（${META.trophies.length}/${TROPHIES.length}）</button></div><button class="sbtn" id="ptitle">タイトルへ戻る</button><p class="hint">Esc / P で再開</p>`);
+  $('ptitle').onclick=()=>{show(`<h2>タイトルへ戻りますか？</h2><p class="hint">${S&&S.testMode?'テスト中のプレイを終了します。':'今のプレイは記録されずに終わります。'}</p><button class="btn" id="pqyes">タイトルへ戻る</button><button class="sbtn" id="pqno">やめる</button>`);$('pqyes').onclick=quitToTitle;$('pqno').onclick=pauseMenu;};
   $('res').onclick=()=>{paused=false;hide();last=performance.now();};$('parch').onclick=()=>archiveScreen(pauseMenu);$('ptro').onclick=()=>trophyScreen(pauseMenu);}
-function togglePause(){paused=!paused;if(paused)pauseMenu();else hide();}
+function togglePause(){paused=!paused;if(paused)pauseMenu();else{hide();last=performance.now();}}
+function quitToTitle(){paused=false;closeShop();$('radio').hidden=true;if(S)S.radio=null;$('bigtimer').hidden=true;$('bosshp').hidden=true;document.body.classList.remove('cine');toTitle();}
 
 /* ---------- doors ---------- */
 function openDoor(d){
@@ -1889,7 +1895,9 @@ function update(dt){
   if(S.great&&!S.boss&&S.greatT>0){S.greatT-=dt;if(S.greatT<=0)greatNext();}
   if(S.great&&S.great.beam>0)S.great.beam=Math.max(0,S.great.beam-dt*1.5);
   if(S.escape)updEscape(dt);
-  for(const d of S.doors){if(d&&d.holding){d.hold-=dt;if(d.hold<=0)breakDoor(d);}}
+  for(const d of S.doors){if(d&&d.holding){
+    if(!d.wet&&doorWet(d)){d.wet=true;bannerShow('','水が扉に届いた！ 水圧がかかっていく…',1.6);tone(90,.5,'sawtooth',.05,-20);}
+    if(d.wet){d.hold-=dt;if(d.hold<=0)breakDoor(d);}}}
   if(S.pressureT>0){S.pressureT-=dt;if(S.pressureT<=0)trophy('pressure');}
   if(!S.released){
     S.charge=Math.min(1,S.charge+dt/CHARGE_TIME);
@@ -1986,7 +1994,7 @@ function drawWall(x,y,cx,cy,th){
 }
 function doorColor(d){return d.type==='key'?(d.hasKey?'#ffd34d':'#c49a2a'):d.type==='timer'?'#ffc24d':(d.count>0?'#7dff9a':'#ff5a5a');}
 function drawDoorClosed(d,cx,cy){
-  if(d.holding){const p=1-d.hold/8;cx+=Math.sin(tNow*45)*(.5+p*3.5);if(Math.random()<p*.3)S.parts.push({x:d.x+(Math.random()-.5)*.6,y:d.y+.4,z:4,vx:0,vy:.6,vz:40,life:.4,max:.4,c:'#8fe3f5',r:2});}
+  if(d.holding&&d.wet){const p=1-d.hold/8;cx+=Math.sin(tNow*45)*(.5+p*3.5);if(Math.random()<p*.3)S.parts.push({x:d.x+(Math.random()-.5)*.6,y:d.y+.4,z:4,vx:0,vy:.6,vz:40,life:.4,max:.4,c:'#8fe3f5',r:2});}
   const h=WALL+8,ext=dropBelow(d.x,d.y);block(cx,cy+ext,h+ext,'#56606c');
   ctx.strokeStyle='#2a3038';ctx.lineWidth=2;ctx.beginPath();
   for(let i=1;i<4;i++){const t=i/4;ctx.moveTo(cx-HW+HW*t,cy-h+HH*t+2);ctx.lineTo(cx-HW+HW*t,cy+HH*t-1);ctx.moveTo(cx+HW*t,cy+HH-HH*t-h+2);ctx.lineTo(cx+HW*t,cy+HH-HH*t-1);}ctx.stroke();
