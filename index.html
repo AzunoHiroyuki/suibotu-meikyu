@@ -705,9 +705,9 @@ function bossTestMenu(){
   const names={ball:'転がる大玉',dice:'気まぐれ大賽',guardian:'石の番人',amida:'あみだ角牛'};
   show(`<h2>ボス戦テスト</h2><p class="hint">テストで遊んだ分は、ハイスコア・トロフィー・アーカイブには記録されません。</p>
   <div class="bt-list">${BOSS_ORDER.map(t=>`<button class="btn bt" data-t="${t}">${names[t]}</button>`).join('')}<button class="btn bt" data-t="great" style="grid-column:1/-1">大番人ガーディアン（B25・ストーリー）</button></div>
-  <div class="row ss-row"><label class="hint bt-zone">大番人戦の始まり<select id="gphase"><option value="rush">召喚ラッシュの最初から</option><option value="body">本体戦から</option><option value="escape">脱出から（撃破後）</option><option value="secret">シークレットエンド演出</option></select></label>
+  <div class="row ss-row"><label class="hint bt-zone">大番人戦の始まり<select id="gphase"><option value="rush">召喚ラッシュの最初から</option><option value="body">本体戦から</option><option value="core">水晶核の出現から（撃破後）</option><option value="escape">脱出から（撃破後）</option><option value="secret">シークレットエンド演出</option></select></label>
   <label class="hint bt-zone">救難ねこの救出数（ストーリー）<select id="tcats">${Array.from({length:21},(_,i)=>`<option value="${i}">${i} / ${CATS_TOTAL}${i===CATS_TOTAL?'（全員）':''}</option>`).join('')}</select></label></div>
-  <label class="hint bt-zone">強さ（迷宮の段階）<select id="btzone">${[0,1,2,3].map(z=>`<option value="${z}">${z+1}番目の迷宮</option>`).join('')}</select></label>
+  <label class="hint bt-zone">強さ（迷宮の段階）<select id="btzone">${[0,1,2,3].map(z=>`<option value="${z}">${z+1}番目の迷宮</option>`).join('')}<option value="final">最終戦（大番人が呼ぶ強化版）</option></select></label>
   <h2 style="font-size:20px;margin-top:6px">ステージセレクト</h2>
   <div class="row ss-row"><label class="hint bt-zone">モード<select id="ssmode"><option value="story">ストーリー</option><option value="endless">エンドレス</option></select></label>
   <label class="hint bt-zone">開始する階<select id="ssfloor">${Array.from({length:30},(_,i)=>`<option value="${i+1}">B${i+1}F${(i%5===4)?'（番人）':''}${i===24?'★':''}</option>`).join('')}</select></label></div>
@@ -716,8 +716,20 @@ function bossTestMenu(){
   <button class="sbtn" id="btback">もどる</button>`);
   $('tarch').onclick=()=>archiveScreen(bossTestMenu,true);
   $('ssgo').onclick=()=>{testCats=+$('tcats').value;startStageSelect(+$('ssfloor').value,$('ssmode').value==='story');};
-  document.querySelectorAll('.bt').forEach(b=>b.onclick=()=>b.dataset.t==='great'?(testCats=+$('tcats').value,startGreatTest($('gphase').value)):startBossTest(b.dataset.t,+$('btzone').value));
+  document.querySelectorAll('.bt').forEach(b=>b.onclick=()=>b.dataset.t==='great'?(testCats=+$('tcats').value,startGreatTest($('gphase').value)):$('btzone').value==='final'?startFinalMinionTest(b.dataset.t):startBossTest(b.dataset.t,+$('btzone').value));
   $('btback').onclick=()=>titleScreen();
+}
+function startFinalMinionTest(t){
+  // the B25 hall with just one of the great guardian's powered-up summons
+  testCats=0;startGreatTest('rush');const G=S.great;if(!G)return;
+  S.boss=null;G.queue=[t];G.n=BOSS_ORDER.indexOf(t);G.single=t;S.greatT=0;greatNext();
+  const names={ball:'転がる大玉',dice:'気まぐれ大賽',guardian:'白亜の番人',amida:'あみだ角牛'};
+  bannerShow('最終戦テスト',`強化版 ${names[t]||S.boss.name}`,1.8);
+}
+function finishFinalMinionTest(){
+  const t=S.great.single;S.great=null;paused=true;
+  show(`<h2>撃破！</h2><p class="hint">最終戦の強化版を倒した。</p><button class="btn" id="fmagain">もう一度</button><button class="sbtn" id="fmmenu">テストメニューへ</button>`);
+  $('fmagain').onclick=()=>{paused=false;startFinalMinionTest(t);};$('fmmenu').onclick=()=>{paused=false;toTitle();bossTestMenu();};
 }
 function startBossTest(type,zone){
   initAudio();hide();newRun();S.forceBoss=type;S.testMode=true;
@@ -976,10 +988,12 @@ const TRACKS={
   maze:{bpm:104,style:'maze',bars:[[45,57,60,64],[41,57,60,65],[48,55,60,64],[43,55,59,62],[45,57,60,64],[41,57,60,65],[40,56,59,64],[40,56,59,62]]},
   boss:{bpm:146,style:'boss',bars:[[40,52,55,59],[40,52,55,59],[36,52,55,60],[38,50,54,57]]},
   rescue:{bpm:78,style:'arp',bars:[[48,60,64,67],[43,59,62,67],[45,57,60,64],[41,57,60,65]]},
+  final:{bpm:152,style:'final',bars:[[38,50,53,57],[34,50,53,58],[36,48,52,55],[33,49,52,57],[38,50,53,57],[34,50,53,58],[31,50,55,58],[33,49,52,55]]},
   great:{bpm:124,style:'great',bars:[[38,50,53,57],[34,50,53,58],[36,48,52,55],[33,49,52,57],[38,50,53,57],[34,50,53,58],[31,50,55,58],[33,49,52,55]]},
 };
 const MAZE_MEL=[0,-1,2,-1,1,-1,-1,3,-1,2,-1,1,0,-1,-1,-1];
 const BOSS_MEL=[3,-1,-1,2,-1,-1,1,-1,-1,-1,2,-1,3,-1,1,-1];
+const FINAL_MEL=[3,-1,2,-1,1,-1,2,-1,3,-1,-1,1,2,-1,0,-1];
 const GREAT_MEL=[3,-1,-1,-1,2,-1,1,-1,0,-1,-1,-1,1,-1,2,-1];
 function playStep(tr,bar,st,t){
   const sd=60/tr.bpm/4,[bn,...ch]=bar;
@@ -991,6 +1005,14 @@ function playStep(tr,bar,st,t){
     const m=MAZE_MEL[st];if(m>=0)note((m===3?ch[0]+12:ch[m])+12,t,sd*2.2,'triangle',.035);
     if(st%4===2)hit(t,.025,6000,.05);
     if(st===0)note(ch[0],t,sd*14,'sine',.018),note(ch[2],t,sd*14,'sine',.014);
+  }else if(tr.style==='final'){
+    // driving octave bass every 16th, four-on-the-floor, backbeat snares, open hats, a 16th arp and a soaring lead
+    note(bn-12+(st%2?12:0),t,sd*.85,'square',.042);
+    if(st%4===0)kick(t,.26);if(st===14)kick(t,.18);if(st===4||st===12)hit(t,.13,1600,.18);if(st===15)hit(t,.07,1600,.08);
+    if(st%4===2)hit(t,.035,9000,.09);else hit(t,.014,8000,.03);
+    note(ch[st%3]+24,t,sd*.7,'triangle',.016);
+    if(st===0)for(const c of ch)note(c+12,t,sd*15,'sawtooth',.013);
+    const m=FINAL_MEL[st];if(m>=0)note((m===3?ch[0]+12:ch[m])+12,t,sd*(m===3?4:2),'sawtooth',.03),note((m===3?ch[0]+12:ch[m])+24,t,sd*(m===3?4:2),'square',.012);
   }else if(tr.style==='great'){
     note(bn-12+(st%4===2?12:0),t,sd*1.8,'square',.04);if(st%2)note(bn,t,sd*.8,'triangle',.03);
     if(st%4===0)kick(t,.22);if(st===4||st===12)hit(t,.1,1500,.16);if(st===14||st===15)hit(t,.07,1500,.1);hit(t,.012,8000,.03);
@@ -1004,7 +1026,8 @@ function playStep(tr,bar,st,t){
 }
 function wantTrack(){if(!S)return'title';const st=S.state;if(st==='demo'||st==='cut')return'title';
   if(st==='rescue'||st==='ascend'||st==='ending')return'rescue';
-  if(S.boss&&S.boss.type==='great')return'great';if(S.great)return'boss';if(S.escape)return'boss';return S.boss?'boss':'maze';}
+  if(st==='corecut'||S.bigCore)return'title'; // the quiet after the final battle
+  if(S.great||(S.boss&&S.boss.type==='great'))return'final';if(S.escape)return'boss';return S.boss?'boss':'maze';}
 /* recorded tracks supplied for the great guardian fight and the best ending; the synth covers the rest
    (and stands in for a recorded track until it has loaded) */
 const FILE_TRACKS={/* e.g. final:'bgm/final.mp3' */},FILE_FALLBACK={final:'great'},XF=2; // no recorded tracks for now: everything is synthesized // XF: crossfade seconds between the end of the track and its start
@@ -1064,11 +1087,12 @@ function startGreat(s){
 }
 function greatNext(){
   const G=S.great;if(!G)return;
+  if(G.single&&G.phase===1&&!G.queue.length){finishFinalMinionTest();return;}
   if(G.phase===1&&G.queue.length){const t=G.queue.shift();G.n++;const sec=S.sections[G.s];sec.btype=t;
     if(t==='dice')for(let i=0;i<4;i++)spawnSpearSwitch(G.s);
     if(t==='ball')placePitSwitches(G.s,sec.ox,sec.oy,sec.G,sec.start,S.doors[G.s]&&S.doors[G.s].inner);
     startBoss(G.s);S.boss.minion=true;S.boss.rush=true;rushSetup(t);G.beam=1;burst(G.hx,G.hy,'#ff5a8a',20);tone(180,.5,'sawtooth',.05,300);
-    if(t==='dice'){S.boss.max=S.boss.hp=7;S.boss.size=3;}
+    if(t==='dice'){S.boss.max=S.boss.hp=16;S.boss.size=4;splitDice(S.boss);} // two big dice from the start
     bannerShow(`強化された番人 ${G.n} / 4`,S.boss.name,1.6);return;}
   if(G.phase===1){G.phase=2;startGreatCore();}
 }
@@ -1157,6 +1181,92 @@ function floodAll(){
   S.drainT=0;S.drainF=1;S.heap.length=0;S.queued.clear();
   for(const [k,t] of S.tile)if(t===0||t===3)S.arr.set(k,S.wt-FILL*3);
   fadeW=1;tone(60,1.4,'sawtooth',.07,-20);
+}
+/* ---------- after the great guardian: the giant crystal core, and the hero's red core ---------- */
+const PAL_BLUE={glow:'191,243,255',face:'#bff3ff',dark:'#6fd2ef',light:'#e8fbff'};
+const PAL_RED={glow:'255,120,130',face:'#ff9aa2',dark:'#d8344a',light:'#ffe2e4'};
+const PAL_ONE={glow:'226,180,255',face:'#ecd4ff',dark:'#a46ae8',light:'#fff6ff'};
+function spawnBigCore(){
+  const sec=S.sections[STORY_LAST],c=(sec.G-1)/2,x=sec.ox+c,y=sec.oy+c;
+  S.bigCore={x,y,t:0};S.tile.set(K(x,y),3); // solid: you bump into it and touch it
+  S.feat.delete(K(x,y));S.released=false;S.heap.length=0;S.queued.clear();
+  burst(x,y,'#bff3ff',30);tone(880,.6,'sine',.05,-200);setTimeout(()=>tone(1320,.8,'sine',.04,-300),250);
+  bannerShow('大番人が崩れ落ちた…','中央に、巨大な水晶核が現れた',2.6);
+}
+function coreTouch(){
+  const C=S.bigCore;if(!C||S.coreCut)return;const [fx,fy]=pPos();
+  if(Math.hypot(fx-C.x,fy-C.y)<1.25)startCoreCut();
+}
+function startCoreCut(){
+  const P=S.P;P.dir=null;P.q=null;S.state='corecut';S.coreCut={t:0,said:new Set()};document.body.classList.add('cine');
+  tone(660,.4,'sine',.04);
+}
+function updCoreCut(dt){
+  const K2=S.coreCut,C=S.bigCore;if(!K2)return;const prev=K2.t;K2.t+=dt;const u=K2.t,at=v=>prev<v&&u>=v;
+  C.t+=dt;updParts(dt);
+  if(at(1.2)){tone(440,1.2,'sine',.05,220);}
+  for(let i=0;i<5;i++){const v=2.7+i*.4;if(at(v))tone(i%2?990:660,.35,'sine',.05,i%2?-200:200);}
+  if(at(4.6)){tone(1320,.5,'triangle',.06);tone(1760,.7,'triangle',.05);tone(2640,.9,'sine',.03);burst(C.x,C.y,'#ecd4ff',40);}
+  if(at(5.9)){S.tile.set(K(C.x,C.y),6);tone(55,1.6,'sawtooth',.09,-15);for(let i=0;i<3;i++)burst(C.x,C.y,'#8a7a62',18);S.quake=1.2;}
+  if(u>5.9)S.quake=Math.max(S.quake||0,1-(u-5.9)/2);
+  if(u>=8.2)endCoreCut();
+}
+function endCoreCut(){
+  if(!S.coreCut)return;S.coreCut=null;S.bigCore=null;document.body.classList.remove('cine');S.state='play';S.quake=0;startEscape();
+}
+function coreCam(){
+  const C=S.bigCore,[px,py]=pPos(),u=S.coreCut?S.coreCut.t:0,[a,b]=iso((px+C.x)/2,(py+C.y)/2);
+  return [a,b+dep(C.x,C.y)-40-Math.min(1,u/1.2)*10];
+}
+function crystalPal(x,y,s,t,spin,pal){
+  // crystalBig with its colours swapped
+  ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  const g=ctx.createRadialGradient(0,0,4,0,0,110);g.addColorStop(0,`rgba(${pal.glow},.7)`);g.addColorStop(1,`rgba(${pal.glow},0)`);ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,110,0,7);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=3;ctx.lineCap='round';
+  for(let i=0;i<6;i++){const a=i*Math.PI/3+t*.6,r0=70+Math.sin(t*6+i)*6;ctx.beginPath();ctx.moveTo(Math.cos(a)*r0,Math.sin(a)*r0);ctx.lineTo(Math.cos(a)*(r0+26),Math.sin(a)*(r0+26));ctx.stroke();}
+  const c=spin===undefined?1:Math.cos(spin),w=42*Math.max(.12,Math.abs(c)),front=c>=0;
+  ctx.fillStyle=pal.face;ctx.beginPath();ctx.moveTo(0,-62);ctx.lineTo(w,-4);ctx.lineTo(0,62);ctx.lineTo(-w,-4);ctx.closePath();ctx.fill();
+  ctx.fillStyle=pal.dark;ctx.beginPath();ctx.moveTo(0,-62);ctx.lineTo(front?w:-w,-4);ctx.lineTo(0,62);ctx.closePath();ctx.fill();
+  ctx.fillStyle=pal.light;ctx.beginPath();ctx.moveTo(-w,-4);ctx.lineTo(w,-4);ctx.lineTo(0,6);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(-w*.33,-30);ctx.lineTo(-w*.15,-46);ctx.lineTo(-w*.1,-24);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+function drawBigCore(){
+  // world space, drawn after the rows
+  const C=S.bigCore;if(!C)return;const u=S.coreCut?S.coreCut.t:-1,[bx,by0]=iso(C.x,C.y),by=by0+dep(C.x,C.y);
+  const [px,py]=isoP(),chestX=px,chestY=py-30;
+  const bob=Math.sin(tNow*2)*5,merged=u>=4.6;
+  // the big core: hovering, then spinning hard and drilling down through the floor
+  let cy=by-86+bob,sc=.85,spin=tNow*1.2,alpha=1;
+  if(u>=5.2){spin=tNow*(6+(u-5.2)*14);}
+  if(u>=5.9){const d=Math.min(1,(u-5.9)/1.4);cy=by-86+d*120;sc=.85*(1-d*.75);alpha=1-d*d;}
+  ctx.fillStyle=`rgba(0,0,0,${.3*alpha})`;ctx.beginPath();ctx.ellipse(bx,by,HW*1.3,HH*1.3,0,0,7);ctx.fill();
+  if(alpha>.02){ctx.globalAlpha=alpha;crystalPal(bx,cy,sc,tNow,spin,merged?PAL_ONE:PAL_BLUE);ctx.globalAlpha=1;}
+  if(u<0)return;
+  // the hero's red core: out of the coat, rising, resonating, then drawn into the big one
+  if(u>=1.2&&u<4.6){
+    const rise=Math.min(1,(u-1.2)/1.2),fly=u<2.8?0:Math.min(1,(u-2.8)/1.8),e=fly*fly*(3-2*fly);
+    const rx0=chestX,ry0=chestY-rise*46,rx=rx0+(bx-rx0)*e,ry=ry0+(cy-ry0)*e-Math.sin(e*Math.PI)*60;
+    if(u<2.0){const gl=ctx.createRadialGradient(chestX,chestY,1,chestX,chestY,26);gl.addColorStop(0,`rgba(255,110,120,${.9*rise})`);gl.addColorStop(1,'rgba(255,110,120,0)');ctx.fillStyle=gl;ctx.beginPath();ctx.arc(chestX,chestY,26,0,7);ctx.fill();}
+    if(u>=2.6){ // the resonance: rings bouncing between the two cores, and a shimmering thread
+      ctx.strokeStyle=`rgba(255,230,255,${.35+.25*Math.sin(tNow*20)})`;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(rx,ry);
+      for(let i=1;i<=16;i++){const f=i/16;ctx.lineTo(rx+(bx-rx)*f+Math.sin(f*12+tNow*18)*5,ry+(cy-ry)*f+Math.cos(f*12+tNow*18)*5);}ctx.stroke();
+      for(let i=0;i<5;i++){const v=u-2.7-i*.4;if(v<0||v>.9)continue;const red=i%2===0,[ox,oy]=red?[rx,ry]:[bx,cy],r=10+v*90;
+        ctx.strokeStyle=red?`rgba(255,110,130,${1-v/.9})`:`rgba(140,230,255,${1-v/.9})`;ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(ox,oy,r,r*.6,0,0,7);ctx.stroke();}}
+    crystalPal(rx,ry,.2+.06*Math.sin(tNow*10),tNow,tNow*3,PAL_RED);
+  }
+  // debris spraying up from the hole as it drills through
+  if(u>=5.9&&u<7.6)for(let i=0;i<10;i++){const v=((u-5.9)*1.6+i*.13)%1,ang=hash(i,77)*Math.PI*2,r=v*60;ctx.fillStyle=`rgba(140,125,100,${1-v})`;ctx.fillRect(bx+Math.cos(ang)*r-3,by-v*70+Math.sin(ang)*r*.4-3,6,6);}
+}
+function drawCoreCutOverlay(){
+  const K2=S.coreCut;if(!K2)return;const u=K2.t;ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(u>=4.5&&u<5.4){const f=u<4.7?(u-4.5)/.2:1-(u-4.7)/.7;ctx.fillStyle=`rgba(255,245,255,${clamp(f,0,1)*.95})`;ctx.fillRect(0,0,W,H);}
+  const lines=[[1.4,2.7,'……胸の赤い水晶核が、熱い……！'],[2.9,4.5,'あの水晶核と……共鳴してる……！？'],[5.0,5.9,'ふたつの核が、ひとつに――'],[6.1,7.9,'核が床を突き破って……落ちていく！']];
+  for(const [a,b,txt] of lines){if(u<a||u>b)continue;const al=clamp(Math.min(u-a,b-u)*4,0,1);
+    ctx.font='800 18px "M PLUS Rounded 1c",sans-serif';const w=ctx.measureText(txt).width+40;ctx.globalAlpha=al;
+    ctx.fillStyle='rgba(6,12,18,.78)';ctx.beginPath();ctx.roundRect(W/2-w/2,H-118,w,40,10);ctx.fill();
+    ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,W/2,H-97);ctx.textBaseline='alphabetic';ctx.globalAlpha=1;}
+  ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='12px "M PLUS Rounded 1c",sans-serif';ctx.textAlign='right';ctx.fillText('Space でスキップ',W-16,H-16);
 }
 /* ---------- radio call from the cat rescue squad ---------- */
 document.getElementById('radio').onclick=()=>radioNext();
@@ -1428,7 +1538,8 @@ function startGreatTest(mode){
   const [ix,iy]=iso(P.x,P.y);camX=ix;camY=iy+dep(P.x,P.y)-18;
   startBoss(last);
   if(mode!=='rush'&&S.great){S.great.queue=[];S.greatT=0;greatNext();} // skip the summons and go straight to the bat
-  if((mode==='escape'||mode==='secret')&&S.boss){S.boss.hp=0;finishBoss();}
+  if((mode==='core'||mode==='escape'||mode==='secret')&&S.boss){S.boss.hp=0;finishBoss();}
+  if(mode==='escape'||mode==='secret'){if(S.bigCore){S.tile.set(K(S.bigCore.x,S.bigCore.y),0);S.bigCore=null;}startEscape();}
   if(mode==='secret'){S.cats=CATS_TOTAL;S.cur=5;S.radioWait=0;startEnding('buried');} // the bat is already beaten: the collapse starts right away
 }
 
@@ -1457,7 +1568,8 @@ function rushSetup(t){
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)S.tile.set(K(G.hx+dx,G.hy+dy),3);
     if(Math.abs(P.x-G.hx)<=1&&Math.abs(P.y-G.hy)<=1){P.x=P.tx=G.hx;P.y=P.ty=G.hy+3;P.moving=false;}
     for(const [px,py] of [[c,2],[c,sec.G-3],[2,c],[sec.G-3,c]])S.feat.set(K(sec.ox+px,sec.oy+py),{type:'plate',door:G.s,lit:false});
-    for(const [px,py] of [[4,4],[sec.G-5,4],[4,sec.G-5],[sec.G-5,sec.G-5]]){const k=K(sec.ox+px,sec.oy+py);if(S.tile.get(k)===0&&!(P.x===sec.ox+px&&P.y===sec.oy+py)){S.tile.set(k,7);burst(sec.ox+px,sec.oy+py,'#9aa4ac',8);}}
+    const cover=[];for(const sx of [-1,1])for(const sy of [-1,1])cover.push([c+2*sx,c+2*sy],[c+2*sx,c+3*sy],[c+3*sx,c+2*sy]);
+    for(const [px,py] of cover){const k=K(sec.ox+px,sec.oy+py);if(S.feat.get(k))continue;if(S.tile.get(k)===0&&!(P.x===sec.ox+px&&P.y===sec.oy+py)){S.tile.set(k,7);burst(sec.ox+px,sec.oy+py,'#9aa4ac',8);}}
     B.volleyT=2;}
 }
 function ballHit(b,msg){
@@ -1467,24 +1579,107 @@ function ballHit(b,msg){
   if(b===B){const c=B.clones.shift();if(c)for(const k of Object.keys(c))B[k]=c[k];}else B.clones=B.clones.filter(x=>x!==b);
   bannerShow('',`大玉を1体倒した！ 残り ${B.hp}`,1.2);
 }
-function laserLen(B,ang){const dx=Math.cos(ang),dy=Math.sin(ang);for(let d=1.6;d<22;d+=.15){const t=S.tile.get(K(Math.round(B.cx+dx*d),Math.round(B.cy+dy*d)));if(t!==0&&t!==3&&t!==6)return d;}return 22;}
+/* ---------- final-battle guardian: a spinning laser that bounces off mirror walls ---------- */
+const lzPass=t=>t===0||t===3||t===6;
+function traceLaser(ox,oy,ang,maxLen=34,hits=null){
+  // walk the beam; intact mirror panels (S.mirror) reflect it, anything else solid stops it
+  let x=ox,y=oy,dx=Math.cos(ang),dy=Math.sin(ang),len=0,bounces=0;const pts=[[x,y]],st=.08;
+  while(len<maxLen){
+    const nx=x+dx*st,ny=y+dy*st,k=K(Math.round(nx),Math.round(ny)),t=S.tile.get(k);
+    if(lzPass(t)){x=nx;y=ny;len+=st;continue;}
+    if(t===1&&S.mirror&&S.mirror.has(k)&&mirrorLanded()&&bounces<2){
+      pts.push([x,y]);if(hits)hits.add(k);
+      const hx=!lzPass(S.tile.get(K(Math.round(nx),Math.round(y)))),hy=!lzPass(S.tile.get(K(Math.round(x),Math.round(ny))));
+      if(hx&&!hy)dx=-dx;else if(hy&&!hx)dy=-dy;else{dx=-dx;dy=-dy;}
+      bounces++;continue;}
+    break;}
+  pts.push([x,y]);return pts;
+}
+function segDist(px,py,ax,ay,bx,by){const vx=bx-ax,vy=by-ay,l2=vx*vx+vy*vy||1e-9,u=clamp(((px-ax)*vx+(py-ay)*vy)/l2,0,1);return Math.hypot(px-(ax+vx*u),py-(ay+vy*u));}
 function updLaser(B,dt){
-  const L=B.lz||(B.lz={phase:'wait',t:2.5,ang:0,len:0});L.t-=dt;
-  if(B.dying>0){L.phase='wait';return;}
-  if(L.phase==='wait'){if(L.t<=0&&B.stun<=0){const [fx,fy]=pPos();L.ang=Math.atan2(fy-B.cy,fx-B.cx);L.phase='aim';L.t=.95;tone(1200,.5,'sine',.03,500);}}
-  else if(L.phase==='aim'){L.len=laserLen(B,L.ang);if(L.t<=0){L.phase='fire';L.t=.45;tone(140,.55,'sawtooth',.07,-50);}}
-  else{L.len=laserLen(B,L.ang);const [fx,fy]=pPos(),dx=Math.cos(L.ang),dy=Math.sin(L.ang),rx=fx-B.cx,ry=fy-B.cy,along=rx*dx+ry*dy,perp=Math.abs(-rx*dy+ry*dx);
-    if(along>1.2&&along<L.len+.2&&perp<.5)hurt();
-    if(L.t<=0){L.phase='wait';L.t=Math.max(1.2,2.3-.4*(B.max-B.hp));}}
+  if(!S.mirror||S.mirrorS!==B.s)setupMirrors(B.s);
+  updMirrors(dt);
+  const L=B.lz||(B.lz={phase:'wait',t:2.5,ang:0,dir:1,beams:[]});L.t-=dt;
+  if(B.dying>0){L.phase='wait';L.beams=[];return;}
+  const n=B.rush&&B.hp<=B.max/2?2:1,hits=new Set(),trace=fire=>{L.beams=[];for(let i=0;i<n;i++)L.beams.push(traceLaser(B.cx,B.cy,L.ang+i*Math.PI,34,fire?hits:null));};
+  if(L.phase==='wait'){L.beams=[];if(L.t<=0&&B.stun<=0){const [fx,fy]=pPos();L.dir=Math.random()<.5?1:-1;L.ang=Math.atan2(fy-B.cy,fx-B.cx)-L.dir*1.1;L.phase='aim';L.t=1;tone(1200,.6,'sine',.03,500);trace(false);}}
+  else if(L.phase==='aim'){trace(false);if(L.t<=0){L.phase='fire';L.t=4.2;tone(140,4,'sawtooth',.05,-30);}}
+  else{
+    L.ang+=L.dir*((B.rush?.5:.4)+.05*(B.max-B.hp))*dt;trace(true); // slow, readable sweep
+    for(const k of hits)crackMirror(k,dt);
+    const [fx,fy]=pPos();
+    for(const pts of L.beams)for(let i=0;i<pts.length-1;i++){const [ax,ay]=pts[i],[bx,by]=pts[i+1];
+      if(i===0){if(Math.hypot(fx-B.cx,fy-B.cy)<1.3)continue;} // the body itself is not the beam
+      if(segDist(fx,fy,ax,ay,bx,by)<.42){hurt();break;}}
+    if(L.t<=0){L.phase='wait';L.t=B.rush?Math.max(1.1,1.9-.2*(B.max-B.hp)):Math.max(2,3.2-.3*(B.max-B.hp));L.beams=[];}}
 }
 function drawLaser(){
-  const B=S.boss;if(!B||B.type!=='guardian'||!B.lz||B.lz.phase==='wait')return;const L=B.lz,a=isoD(B.cx,B.cy),e=isoD(B.cx+Math.cos(L.ang)*L.len,B.cy+Math.sin(L.ang)*L.len);
-  const sx=a[0],sy=a[1]-58,ex=e[0],ey=e[1]-14;
-  if(L.phase==='aim'){ctx.strokeStyle=`rgba(255,60,60,${.4+.4*Math.sin(tNow*30)})`;ctx.lineWidth=2;ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='rgba(255,80,80,.9)';ctx.beginPath();ctx.arc(sx,sy,4+Math.sin(tNow*30)*2,0,7);ctx.fill();}
-  else{ctx.lineCap='round';ctx.strokeStyle='rgba(255,70,50,.45)';ctx.lineWidth=18;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
-    ctx.strokeStyle='rgba(255,200,170,.95)';ctx.lineWidth=6;ctx.stroke();ctx.lineCap='butt';
-    ctx.fillStyle='rgba(255,230,200,.9)';ctx.beginPath();ctx.arc(ex,ey,9+Math.random()*4,0,7);ctx.fill();}
+  const B=S.boss;if(!B||B.type!=='guardian'||!B.lz||B.lz.phase==='wait'||!B.lz.beams.length)return;const L=B.lz,o=isoD(B.cx,B.cy),ox=o[0],oy=o[1]-58;
+  const scr=([x,y],i)=>{if(i===0)return[ox,oy];const q=isoD(x,y);return[q[0],q[1]-24];};
+  for(const pts of L.beams){const sp=pts.map(scr);
+    const path=()=>{ctx.beginPath();ctx.moveTo(sp[0][0],sp[0][1]);for(let i=1;i<sp.length;i++)ctx.lineTo(sp[i][0],sp[i][1]);};
+    ctx.lineCap='round';ctx.lineJoin='round';
+    if(L.phase==='aim'){ctx.strokeStyle=`rgba(255,60,60,${.4+.4*Math.sin(tNow*30)})`;ctx.lineWidth=2;ctx.setLineDash([6,6]);path();ctx.stroke();ctx.setLineDash([]);}
+    else{ctx.strokeStyle='rgba(255,70,50,.42)';ctx.lineWidth=18;path();ctx.stroke();ctx.strokeStyle='rgba(255,205,175,.95)';ctx.lineWidth=6;path();ctx.stroke();
+      for(let i=1;i<sp.length-1;i++){ctx.fillStyle='rgba(200,250,255,.9)';ctx.beginPath();ctx.arc(sp[i][0],sp[i][1],7+Math.random()*3,0,7);ctx.fill();} // bounce flares
+      const e=sp[sp.length-1];ctx.fillStyle='rgba(255,230,200,.9)';ctx.beginPath();ctx.arc(e[0],e[1],9+Math.random()*4,0,7);ctx.fill();}
+    ctx.lineCap='butt';ctx.lineJoin='miter';}
+  // the turning lens on top of the guardian
+  ctx.save();ctx.translate(ox,oy);ctx.rotate(L.ang*.5);ctx.strokeStyle='rgba(255,120,100,.9)';ctx.lineWidth=2.5;
+  for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.arc(0,0,11,0,.9);ctx.stroke();}
+  ctx.fillStyle=L.phase==='fire'?'#fff2e8':'rgba(255,80,80,.9)';ctx.beginPath();ctx.arc(0,0,4.5+Math.sin(tNow*30)*1.5,0,7);ctx.fill();ctx.restore();
+}
+const mirrorOn=()=>S.boss&&S.boss.type==='guardian'&&S.mirror&&S.mirrorS===S.boss.s;
+function drawMirror(x,y,cx,cy){
+  // a polished glass panel on one face of the hall's wall; it drops in from above, and cracks as the beam burns it
+  const k=K(x,y),F=S.mirFace,d=F?clamp(F.drop/.8,0,1):1,e=1-Math.pow(1-d,3),off=(1-e)*-220,hit=S.mirHit&&S.mirHit.get(k)||0;
+  const h=WALL;cy+=off;ctx.save();ctx.globalAlpha=.3+.7*e;
+  ctx.fillStyle='rgba(110,200,245,.55)';poly([[cx-HW,cy-h],[cx,cy+HH-h],[cx,cy+HH],[cx-HW,cy]]);
+  ctx.fillStyle='rgba(80,175,235,.6)';poly([[cx,cy+HH-h],[cx+HW,cy-h],[cx+HW,cy],[cx,cy+HH]]);
+  ctx.fillStyle='rgba(230,250,255,.6)';poly(diamond(cx,cy,h));
+  const sh=((tNow*.6+(x+y)*.13)%1.6)-.3;
+  if(sh>0&&sh<1){ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=3;const a=cx-HW+sh*HW,b=cy-h+sh*HH;ctx.beginPath();ctx.moveTo(a,b+2);ctx.lineTo(a,b+h-2);ctx.stroke();}
+  ctx.strokeStyle='rgba(220,250,255,.9)';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(cx-HW,cy-h);ctx.lineTo(cx,cy+HH-h);ctx.lineTo(cx+HW,cy-h);ctx.stroke();
+  if(hit>0){const f=clamp(hit/MIRROR_LIFE,0,1);ctx.strokeStyle=`rgba(255,255,255,${.5+.5*f})`;ctx.lineWidth=1.4;ctx.beginPath();
+    for(let i=0;i<2+f*5;i++){const a=hash(x*7+i,y)*Math.PI*2,r=4+f*12;ctx.moveTo(cx,cy-h/2);ctx.lineTo(cx+Math.cos(a)*r,cy-h/2+Math.sin(a)*r*.6);}ctx.stroke();}
+  if(d<1&&d>.85){ctx.fillStyle='rgba(255,255,255,.5)';poly(diamond(cx,cy,h));}
+  ctx.restore();
+}
+const MIRROR_LIFE=.35; // seconds of beam a panel takes before it shatters
+function setupMirrors(s){
+  // the hall's four outer wall faces; only one of them carries a mirror at a time
+  S.mirrorS=s;const sec=S.sections[s],G=sec.G,faces=[[],[],[],[]];
+  for(let i=1;i<G-1;i++){const cells=[[i,0],[i,G-1],[0,i],[G-1,i]];
+    cells.forEach(([x,y],f)=>{const k=K(sec.ox+x,sec.oy+y);if(S.tile.get(k)===1)faces[f].push(k);});}
+  S.mirFaces=faces;S.mirFace=null;S.mirror=new Set();S.mirHit=new Map();S.mirNext=0;
+  dropMirror(true);
+}
+function seenWalls(){
+  // wall cells a beam from the guardian can reach in a straight line (cover blocks hide the rest)
+  const B=S.boss,seen=new Set();if(!B)return seen;
+  for(let a=0;a<Math.PI*2;a+=.006){const dx=Math.cos(a),dy=Math.sin(a);let x=B.cx,y=B.cy;for(let d=0;d<30;d+=.08){x=B.cx+dx*d;y=B.cy+dy*d;const k=K(Math.round(x),Math.round(y));if(!lzPass(S.tile.get(k))){seen.add(k);break;}}}
+  return seen;
+}
+function dropMirror(first){
+  const seen=seenWalls(),faces=S.mirFaces.map(f=>f.filter(k=>seen.has(k)));
+  let opts=[0,1,2,3].filter(f=>faces[f].length>=3&&(!S.mirFace||f!==S.mirFace.f));if(!opts.length)opts=[0,1,2,3].filter(f=>faces[f].length);
+  const f=opts[Math.random()*opts.length|0];if(f===undefined)return;
+  S.mirFace={f,drop:0,idle:0};S.mirror=new Set(faces[f]);S.mirHit=new Map();
+  tone(1500,.5,'sine',.04,-600);
+  setTimeout(()=>{if(mirrorOn()){tone(2200,.15,'triangle',.05);bannerShow('',first?'壁の一面が鏡になった！ レーザーが跳ね返るぞ':'鏡が降ってきた！',1.6);}},first?1700:500);
+}
+const mirrorLanded=()=>!S.mirFace||S.mirFace.drop>=.8;
+function crackMirror(k,dt){
+  const v=(S.mirHit.get(k)||0)+dt;S.mirHit.set(k,v);if(S.mirFace)S.mirFace.idle=0;
+  if(v>=MIRROR_LIFE){S.mirror.delete(k);S.mirHit.delete(k);const x=k%8192,y=Math.floor(k/8192);
+    burst(x,y,'#bfeaff',14);burst(x,y,'#ffffff',6);tone(1800+Math.random()*600,.18,'triangle',.05,-900);
+    if(!S.mirror.size){S.mirNext=2.2;bannerShow('','鏡が全部割れた！',1.2);}}
+}
+function updMirrors(dt){
+  if(S.mirFace&&S.mirFace.drop<.8){S.mirFace.drop+=dt;if(S.mirFace.drop>=.8){tone(900,.2,'triangle',.05,-300);for(const k of S.mirror)if(Math.random()<.3)burst(k%8192,Math.floor(k/8192),'#dff6ff',4);}}
+  if(S.mirNext>0){S.mirNext-=dt;if(S.mirNext<=0)dropMirror(false);}
+  // safety net: a mirror the beam hasn't touched for a while gives way by itself
+  else if(S.mirFace&&S.mirror.size&&S.mirFace.drop>=.8&&(S.mirFace.idle+=dt)>12){for(const k of [...S.mirror]){S.mirHit.set(k,MIRROR_LIFE);crackMirror(k,0);}}
 }
 
 /* ---------- story continue ---------- */
@@ -1666,7 +1861,7 @@ function updBoss(dt){
   else if(B.type==='ball'){ballAI(B,dt);for(const c of B.clones||[])ballAI(c,dt);}
   else if(B.type==='amida')amidaAI(B,dt);
   else if(B.type==='dice'){for(const d of [B,...(B.clones||[])])if(!diceKick(d,dt))diceAI(d,dt);}
-  if(B.type==='guardian'&&B.rush)updLaser(B,dt); // the laser keeps its own timer, even while stunned
+  if(B.type==='guardian')updLaser(B,dt); // the laser keeps its own timer, even while stunned
   const [fx,fy]=pPos();
   if(B.clones&&B.stun<=0)for(const c of B.clones)if(Math.hypot(fx-c.cx,fy-c.cy)<(B.type==='ball'?1:.75*diceScale(c)))hurt();
   if(B.type!=='guardian'&&B.stun<=0&&Math.hypot(fx-B.cx,fy-B.cy)<(B.type==='ball'?1:B.type==='amida'?.85:B.type==='dice'?.75*diceScale(B):.75))hurt();
@@ -1688,7 +1883,7 @@ function finishBoss(){
   S.score+=1000*(B.z+1);S.kills++;S.boss=null;S.shots=[];S.rings=[];
   if(B.minion){S.greatT=.15;return;}
   sec.cleared=true;
-  if(B.type==='great'){S.score+=10000;startEscape();return;}
+  if(B.type==='great'){S.score+=10000;spawnBigCore();return;}
   const lk=K(dr.inner?dr.inner[0]:dr.x,dr.inner?dr.inner[1]:dr.y);S.feat.set(lk,{type:"lever",door:B.s,on:false});
   bannerShow("","出口のレバーを引け！",1.8);
   [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.16,'triangle',.06),i*100));
@@ -1716,6 +1911,7 @@ function queue(d){if(!S||S.state!=='play')return;const P=S.P;
 const KEYS={ArrowUp:[0,-1],KeyW:[0,-1],ArrowRight:[1,0],KeyD:[1,0],ArrowDown:[0,1],KeyS:[0,1],ArrowLeft:[-1,0],KeyA:[-1,0]};
 addEventListener('keydown',e=>{
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'))return; // typing a name
+  if(S&&S.state==='corecut'&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();S.coreCut.t=Math.max(S.coreCut.t,S.coreCut.t<5.9?5.85:7.9);return;}
   if(S&&S.radio&&!paused&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();radioNext();return;}
   if(S&&S.state==='continue'){if(e.code==='Enter'||e.code==='Space'){e.preventDefault();continueStory();}else if(e.code==='Escape'){e.preventDefault();giveUpContinue();}return;}
   if(KEYS[e.code]){e.preventDefault();initAudio();queue(KEYS[e.code]);}
@@ -1895,6 +2091,7 @@ function update(dt){
   if(S.great&&!S.boss&&S.greatT>0){S.greatT-=dt;if(S.greatT<=0)greatNext();}
   if(S.great&&S.great.beam>0)S.great.beam=Math.max(0,S.great.beam-dt*1.5);
   if(S.escape)updEscape(dt);
+  if(S.bigCore){S.breath=100;coreTouch();}
   for(const d of S.doors){if(d&&d.holding){
     if(!d.wet&&doorWet(d)){d.wet=true;bannerShow('','水が扉に届いた！ 水圧がかかっていく…',1.6);tone(90,.5,'sawtooth',.05,-20);}
     if(d.wet){d.hold-=dt;if(d.hold<=0)breakDoor(d);}}}
@@ -1933,6 +2130,7 @@ function updParts(dt){for(const p of S.parts){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*
 /* ---------- HUD ---------- */
 let chipCache='';
 function goalText(){
+  if(S.bigCore)return'中央の巨大な水晶核に触れろ';
   if(S.escape)return S.cur>0?'崩れる迷宮を上の階へ戻れ！':'地上への階段をのぼれ！';
   if(S.great&&!S.boss)return'大番人が番人を呼んでいる…';
   if(S.boss&&S.boss.type==='great')return S.boss.dying>0?'撃破！':S.boss.exposed>0?'殻が割れた！ 槍をぶつけろ':'爆弾を踏んで殻の横で爆発させろ（離れて！）';
@@ -2314,6 +2512,7 @@ function drawPlayer(cx,cy,air){
   const d=curDoor();if(d&&d.hasKey&&!d.open){ctx.strokeStyle='#ffd34d';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(cx+10,by-46,3.5,0,7);ctx.moveTo(cx+13.5,by-46);ctx.lineTo(cx+20,by-46);ctx.stroke();}
 }
 function targets(){
+  if(S.bigCore)return[{x:S.bigCore.x,y:S.bigCore.y,label:'巨大な水晶核'}];
   if(S.escape){if(S.cur>0){const e=S.doors[S.cur-1];return[{x:e.x,y:e.y,label:'上の階へ'}];}return[{x:ORG+1,y:ORG-ENT+1,label:'地上への階段'}];}
   if(S.great&&!S.boss)return[];
   if(S.boss&&S.boss.type==='great'){if(S.boss.exposed>0){const out=[];for(const [k,f] of S.feat)if(f.type==='spearsw'&&(f.grow??1)>=1){const x=k%8192;out.push({x,y:(k-x)/8192,label:'槍スイッチ'});}return nearest2(out);}const out=[];for(const [k,f] of S.feat)if(f.type==='gbomb'&&!f.armed){const x=k%8192;out.push({x,y:(k-x)/8192,label:'爆弾スイッチ'});}return out;}
@@ -2333,7 +2532,7 @@ function draw(){
   if(S.state==="ending"){drawEnding();return;}
   if(S.state==="cut"){drawCut();return;}
   const [fx,fy]=pPos(),[psx,psy]=isoP(),pD=pDep();
-  camX+=(psx-camX)*.12;camY+=(psy-18-camY)*.12;
+  if(S.coreCut&&S.bigCore){const [qx,qy]=coreCam();camX+=(qx-camX)*.08;camY+=(qy-camY)*.08;}else{camX+=(psx-camX)*.12;camY+=(psy-18-camY)*.12;}
   ctx.setTransform(DPR*SC,0,0,DPR*SC,DPR*(W/2-camX*SC),DPR*(H/2-camY*SC));
   const vx0=camX-W/2/SC,vx1=camX+W/2/SC,vy0=camY-H/2/SC,vy1=camY+H/2/SC;
   const u0=Math.floor(vx0/HW)-2,u1=Math.ceil(vx1/HW)+2,k0=Math.floor((vy0-pD-90)/HH)-2,k1=Math.ceil((vy1+WALL+20-pD+90)/HH)+2;
@@ -2353,7 +2552,7 @@ function draw(){
     for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;const md=m.moving?Math.max(m.x+m.y,m.tx+m.ty):m.x+m.y;if(md===k){const [mx,my]=mobPos(m),[sx,sy0]=iso(mx,my);drawMob(m,sx,sy0+dep(m.x,m.y));}}
     if(k===pDiag&&!(S.state==='rescue'&&S.rescue.t>=1.5)&&!(S.state==='play'&&S.inv>0&&(tNow*14|0)%2)){const [sx,sy]=isoP();drawPlayer(sx,sy);}
     for(let x=xa;x<=xb;x++){const y=k-x,kk=K(x,y),t=S.tile.get(kk);if(t===undefined)continue;const [cx,cy]=isoD(x,y);
-      if(t===1){drawWall(x,y,cx,cy,themeOf(x,y));if(S.rotC.has(kk))drawRotHub(x,y,cx,cy);}
+      if(t===1){drawWall(x,y,cx,cy,themeOf(x,y));if(S.rotC.has(kk))drawRotHub(x,y,cx,cy);if(mirrorOn()&&S.mirror.has(kk))drawMirror(x,y,cx,cy);}
       else if(t===4)drawArm(x,y,cx,cy);
       else if(t===5)drawFallen(x,y,cx,cy);
       else if(t===7)drawPillar(x,y,cx,cy);
@@ -2382,6 +2581,7 @@ function draw(){
   for(const j of S.jets){const [ax,ay]=isoD(j.x0,j.y0),[bx,by]=isoD(j.x1,j.y1),a=clamp(j.t/.6,0,1);
     ctx.strokeStyle=`rgba(120,230,255,${a})`;ctx.lineWidth=10*a+2;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(ax,ay-20);ctx.quadraticCurveTo((ax+bx)/2,(ay+by)/2-90,bx,by-50);ctx.stroke();
     ctx.strokeStyle=`rgba(255,255,255,${a*.8})`;ctx.lineWidth=3*a;ctx.stroke();ctx.lineCap='butt';}
+  drawBigCore();
   const tg=S.state==='play'?targets():[];
   for(const t of tg)drawGoalMarker(t);
   for(const p of S.parts){const [sx,sy]=isoD(p.x,p.y);ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.beginPath();ctx.arc(sx,sy-p.z,p.r,0,7);if(p.bubble){ctx.strokeStyle=p.c;ctx.lineWidth=1.2;ctx.stroke();}else{ctx.fillStyle=p.c;ctx.fill();}}
@@ -2403,6 +2603,7 @@ function draw(){
   }
   if(S.state==="rescue")drawRescue(psx,psy);
   if(S.radio)drawRadioFace();
+  drawCoreCutOverlay();
 }
 function drawRescue(psx,psy){
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -2606,6 +2807,7 @@ function frame(t){
   const dt=Math.min(.05,(t-last)/1000||0);last=t;tNow=t/1000;
   if(S&&!paused){
     if(S.state==='play')update(dt);
+    else if(S.state==='corecut')updCoreCut(dt);
     else if(S.state==='radio'){if(S.radioWait>0){S.radioWait-=dt;if(S.radioWait<=0){S.radioWait=0;tone(1400,.08,'square',.03);setTimeout(()=>tone(1400,.08,'square',.03),140);startRadio(escapeRadio(),escapeGo);}}else updRadio(dt);}
     else if(S.state==='rescue'){S.rescue.t+=dt;if(S.released&&!S.boss){S.wt+=dt;flow();}if(S.rescue.t>=2.9){S.state='ascend';scoreEntry();}}
     else if(S.state==='cut'){S.cut.t+=dt;if(S.cut.t>=CUT_END)endCut();}
