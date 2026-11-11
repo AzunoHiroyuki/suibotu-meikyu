@@ -43,6 +43,15 @@ body{background:var(--night);color:var(--ink);font-family:var(--body);overflow:h
 .o2bar{width:130px;height:9px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden;border:1px solid var(--line);}
 .o2bar i{display:block;height:100%;width:100%;background:#9fe8ff;}
 .o2bar.low i{background:var(--ember);}
+.o2.st .o2bar i{background:#ffd34d;transition:width .08s;}.o2.st .o2bar.low i{background:#ff9a4a;}
+#dodgebtn{position:fixed;right:calc(max(16px,env(safe-area-inset-right,0px)) + 168px);bottom:calc(30px + env(safe-area-inset-bottom,0px));width:72px;height:72px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:#ffd34d;font-weight:800;font-size:14px;z-index:3;display:none;touch-action:none;}
+#dodgebtn:active{background:rgba(255,211,77,.3);}
+#guardbtn{position:fixed;right:calc(max(16px,env(safe-area-inset-right,0px)) + 168px);bottom:calc(112px + env(safe-area-inset-bottom,0px));width:72px;height:72px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:#9fe8ff;font-weight:800;font-size:14px;z-index:3;display:none;touch-action:none;}
+#guardbtn:active{background:rgba(140,220,255,.3);}
+@media (pointer:coarse){#guardbtn{display:block;}}
+body.cine #guardbtn{display:none!important;}
+@media (pointer:coarse){#dodgebtn{display:block;}}
+body.cine #dodgebtn{display:none!important;}
 .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:220px;}
 .chip{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-variant-numeric:tabular-nums;}
 .chip.goal{color:var(--amber);border-color:rgba(255,194,77,.55);}
@@ -191,6 +200,7 @@ button.arch-i:hover{background:rgba(214,160,255,.14);}
   <div class="gauge"><div class="glabel" id="glabel">放水まで</div><div class="gbar" id="gbar"><i id="gfill"></i></div></div>
   <div class="hearts" id="hearts" aria-label="体力"></div>
   <div class="o2">酸素<div class="o2bar" id="o2bar"><i id="o2"></i></div></div>
+  <div class="o2 st">スタミナ<div class="o2bar" id="stbar"><i id="stam"></i></div></div>
   <div class="chips" id="chips"></div>
 </div>
 <div id="banner" hidden></div>
@@ -203,6 +213,7 @@ button.arch-i:hover{background:rgba(214,160,255,.14);}
 <div id="bigtimer" hidden><small>扉が閉まるまで</small><b id="bigsec">0</b></div>
 <div id="bosshp" hidden><span id="bossname">番人</span><div class="bhp"><i id="bhpfill"></i></div></div>
 
+<button id="dodgebtn" aria-label="ダッジ（Zキー）">ダッジ</button><button id="guardbtn" aria-label="ガード（Xキー長押し）">ガード</button>
 <div class="pad" id="pad">
   <button class="ul" data-d="-1,0" aria-label="左上へ">↖</button>
   <button class="ur" data-d="0,-1" aria-label="右上へ">↗</button>
@@ -447,6 +458,8 @@ const SHOP=[
   {id:'swim', nm:'水かき',    ds:'水の中でも速く動ける',base:10,step:8,max:3},
   {id:'tank', nm:'酸素ボンベ',ds:'酸素の減りを遅くする',base:12,step:8,max:3},
   {id:'heart',nm:'ハートの器',ds:'最大体力 +1（1回復つき）',base:25,step:15,max:3},
+  {id:'roll', nm:'身かわしの帯',ds:'ダッジの無敵時間アップ・スタミナ消費ダウン',base:14,step:8,max:3},
+  {id:'bash', nm:'突撃の盾飾り',ds:'盾突進が1マス伸び、威力アップ',base:16,step:10,max:2},
   {id:'heal', nm:'回復薬',    ds:'体力を 1 回復',base:10,step:0,max:99},
 ];
 const priceOf=it=>it.base+it.step*(S.up[it.id]||0);
@@ -590,16 +603,17 @@ function spawnMobs(s,cells,used){
 const mobPos=m=>m.moving?[m.x+(m.tx-m.x)*m.p,m.y+(m.ty-m.y)*m.p]:[m.x,m.y];
 function updMobs(dt){
   const [fx,fy]=pPos();
-  for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;
+  for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;if(m.fleeT>0)m.fleeT-=dt;
     if(S.ice<=0){let rem=m.spd*dt,g=0;
       while(rem>1e-6&&g++<6){
         if(!m.moving){const opts=DIRS.filter(([dx,dy])=>{const k=K(m.x+dx,m.y+dy);return isFloor(m.x+dx,m.y+dy)&&S.sec.get(k)===m.s&&!S.doorAt.has(k)&&!S.armSet.has(k);});
           let ch=opts.filter(d=>!(m.dir&&d[0]===-m.dir[0]&&d[1]===-m.dir[1]));if(!ch.length)ch=opts;if(!ch.length)break;
           let pick=ch[Math.random()*ch.length|0];
-          if(m.chase&&Math.hypot(fx-m.x,fy-m.y)<5)pick=ch.slice().sort((a,b)=>Math.hypot(fx-m.x-a[0],fy-m.y-a[1])-Math.hypot(fx-m.x-b[0],fy-m.y-b[1]))[0];
+          if(m.chase&&Math.hypot(fx-m.x,fy-m.y)<5)pick=ch.slice().sort((a,b)=>(m.fleeT>0?-1:1)*(Math.hypot(fx-m.x-a[0],fy-m.y-a[1])-Math.hypot(fx-m.x-b[0],fy-m.y-b[1])))[0]; // flees for a moment after hitting the shield
           m.dir=pick;m.tx=m.x+pick[0];m.ty=m.y+pick[1];m.moving=true;m.p=0;}
         const st=Math.min(rem,1-m.p);m.p+=st;rem-=st;if(m.p>=1-1e-6){m.x=m.tx;m.y=m.ty;m.moving=false;m.p=0;}}}
     const [mx,my]=mobPos(m);
+    if(S.state==='play'&&S.guard&&!(S.pStun>0)&&Math.hypot(mx-fx,my-fy)<.75&&guardFacing({x:mx,y:my})){bounceMob(m,fx,fy);continue;}
     if(S.state==='play'&&S.inv<=0&&Math.hypot(mx-fx,my-fy)<.6){
       S.breath=Math.max(0,S.breath-35);S.inv=1;burst(fx,fy,'#7fd8f0',10);tone(240,.18,'sine',.06,-140);bannerShow('','いわガニにはさまれた！ 酸素 -35',.9);}
   }
@@ -646,6 +660,8 @@ function amidaPath(B,li,fromTop){
 }
 function clearAmidaBlocks(){for(const f of S.falls)if(f.amida&&f.state==='stand'){f.life=0;}}
 function amidaAI(B,dt){
+  if(B.kbT>0){B.kbT-=dt;if(B.rush)updSpinners(B,dt);return;} // knocked back by a shield bash
+  if(B.rush)return rushAmidaAI(B,dt);
   const rage=B.max-B.hp;
   if(B.mode==='idle'){B.t-=dt;if(B.t<=0){for(const [k,f] of [...S.feat])if(f.type==='bombsw')S.feat.delete(k);spawnAmidaBlocks(B);B.mode='drop';B.t=2.2;}}
   else if(B.mode==='drop'){B.t-=dt;if(B.t<=0){B.fromTop=Math.random()<.5;B.lane=Math.random()*5|0;B.path=amidaPath(B,B.lane,B.fromTop);B.pi=0;
@@ -684,7 +700,7 @@ function drawAmidaPath(B){
 function drawAmida(B,cx,cy){
   // あみだ角牛: an iron-plated bull that only runs along the ladder
   const dying=B.dying>0;if(dying)ctx.globalAlpha=clamp(B.dying/1.2,0,1);
-  const base=B.flash>0&&(tNow*16|0)%2?'#ffffff':rageTint('#6a5a4a',B),charging=B.mode==='charge',shake=B.mode==='aim'?Math.sin(tNow*50)*2:0;cx+=shake;
+  const base=B.flash>0&&(tNow*16|0)%2?'#ffffff':rageTint('#6a5a4a',B),charging=B.mode==='charge',shake=B.mode==='aim'?Math.sin(tNow*50)*2:B.kbT>0?Math.sin(tNow*60)*4:0;cx+=shake;
   const sx=(B.dirx||0)-(B.diry||1),fx=Math.sign(sx)||1;
   ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(cx,cy,24,11,0,0,7);ctx.fill();
   const y=cy-(charging?Math.abs(Math.sin(tNow*20))*3:0);
@@ -712,9 +728,15 @@ function bossTestMenu(){
   <div class="row ss-row"><label class="hint bt-zone">モード<select id="ssmode"><option value="story">ストーリー</option><option value="endless">エンドレス</option></select></label>
   <label class="hint bt-zone">開始する階<select id="ssfloor">${Array.from({length:30},(_,i)=>`<option value="${i+1}">B${i+1}F${(i%5===4)?'（番人）':''}${i===24?'★':''}</option>`).join('')}</select></label></div>
   <button class="btn" id="ssgo">この階から始める</button>
+  <h2 style="font-size:20px;margin-top:6px">主人公の強化</h2>
+  <div class="row ss-row" style="flex-wrap:wrap">${SHOP.filter(it=>it.id!=='heal').map(it=>`<label class="hint bt-zone">${it.nm}<select class="tup" data-id="${it.id}">${Array.from({length:it.max+1},(_,l)=>`<option value="${l}"${(testUps[it.id]||0)===l?' selected':''}>Lv${l}${l===it.max?'（最大）':''}</option>`).join('')}</select></label>`).join('')}</div>
+  <div class="row"><button class="sbtn" id="tupmax">全部最大</button><button class="sbtn" id="tupzero">全部なし</button></div>
   <button class="sbtn" id="tarch">アーカイブ全閲覧（${ARCHIVES.length}件）</button>
   <button class="sbtn" id="btback">もどる</button>`);
   $('tarch').onclick=()=>archiveScreen(bossTestMenu,true);
+  document.querySelectorAll('.tup').forEach(el=>el.onchange=()=>{testUps[el.dataset.id]=+el.value;});
+  $('tupmax').onclick=()=>{for(const it of SHOP)if(it.id!=='heal')testUps[it.id]=it.max;bossTestMenu();};
+  $('tupzero').onclick=()=>{testUps={};bossTestMenu();};
   $('ssgo').onclick=()=>{testCats=+$('tcats').value;startStageSelect(+$('ssfloor').value,$('ssmode').value==='story');};
   document.querySelectorAll('.bt').forEach(b=>b.onclick=()=>b.dataset.t==='great'?(testCats=+$('tcats').value,startGreatTest($('gphase').value)):$('btzone').value==='final'?startFinalMinionTest(b.dataset.t):startBossTest(b.dataset.t,+$('btzone').value));
   $('btback').onclick=()=>titleScreen();
@@ -732,7 +754,7 @@ function finishFinalMinionTest(){
   $('fmagain').onclick=()=>{paused=false;startFinalMinionTest(t);};$('fmmenu').onclick=()=>{paused=false;toTitle();bossTestMenu();};
 }
 function startBossTest(type,zone){
-  initAudio();hide();newRun();S.forceBoss=type;S.testMode=true;
+  initAudio();hide();newRun();S.forceBoss=type;S.testMode=true;applyTestUps();
   const last=zone*5+4;for(let s=2;s<=last+1;s++)genSection(s);
   const sec=S.sections[last],P=S.P;P.x=P.tx=sec.start[0];P.y=P.ty=sec.start[1];P.moving=false;P.dir=null;P.q=null;P.face=[1,0];
   S.cur=last;S.best=last;S.charge=0;S.frozen.clear();S.sources=[S.sections[last-1].start];
@@ -837,7 +859,7 @@ function updSpears(dt){
     if(t===5){S.tile.set(k,0);for(const f of S.falls)if(f.x===Math.round(sp.x)&&f.y===Math.round(sp.y))f.state='gone';burst(Math.round(sp.x),Math.round(sp.y),'#b9a27a',8);}
     if(B&&B.type==='great'&&B.dying<=0&&Math.hypot(sp.x-B.cx,sp.y-B.cy)<1.6){sp.dead=true;greatSpear(B,sp);continue;}
     else if(t!==0&&t!==3){sp.dead=true;burst(sp.x,sp.y,'#cfd6dc',6);continue;}
-    if(Math.hypot(sp.x-fx,sp.y-fy)<.5)hurt();
+    if(Math.hypot(sp.x-fx,sp.y-fy)<.5)hurt(sp);
     if(B&&B.type==='dice'&&B.dying<=0&&B.flash<=0){for(const d of [B,...B.clones]){if(Math.hypot(sp.x-d.cx,sp.y-d.cy)<.75*diceScale(d)+.15){sp.dead=true;hitDie(d,'槍');break;}}}
   }
   S.spears=S.spears.filter(sp=>!sp.dead);
@@ -920,13 +942,16 @@ function drawPitSw(f,cx,cy){
 }
 
 /* ---------- dice sizes: a hit splits a die into two smaller ones; the smallest shatters ---------- */
-const diceScale=d=>[1,.5,.68,.88,1.18][d.size||3];
+// hits needed to clear a die of this size (the regular boss splits in two, the final battle's in three and skips a size)
+const diceHits=(sz,rush)=>sz<=1?1:1+(rush?3:2)*diceHits(rush?Math.max(1,sz-2):sz-1,rush);
+const diceScale=d=>[1,.5,.68,.88,1.18,1.48][d.size||3]; // size 5: the final battle's giant die
 const diceRage=B=>Math.min(B.rush?3.6:2,(B.max-B.hp)*3/B.max+(B.rush?1.2:0));
 function hitDie(d,msg){
   const B=S.boss;if(!B||B.dying>0||B.flash>0)return;
-  const sz=d.size||3;damageBoss(B,msg);
+  const sz=d.size||3;if(B.hp<=1&&(sz>1||B.clones.length))B.hp=2; // only the last die ends the fight
+  damageBoss(B,msg);
   if(!S.boss||B.hp<=0)return;
-  if(sz>1){d.size=sz-1;splitDice(d);bannerShow('',`サイコロが分裂した！ 残り ${B.hp}`,1.2);}
+  if(sz>1){d.size=B.rush?Math.max(1,sz-2):sz-1;splitDice(d);if(B.rush)splitDice(d);bannerShow('',`サイコロが${B.rush?'3つに':''}分裂した！ 残り ${B.hp}`,1.2);} // the final battle's die splits in three
   else{
     burst(d.cx,d.cy,'#f4efe4',22);burst(d.cx,d.cy,'#2a2430',8);tone(300,.3,'square',.06,-200);
     if(d===B){const c=B.clones.shift();if(c)for(const k of Object.keys(c))B[k]=c[k];else{B.hp=1;damageBoss(B,msg);return;}} // no dice left: finish it
@@ -1092,7 +1117,7 @@ function greatNext(){
     if(t==='dice')for(let i=0;i<4;i++)spawnSpearSwitch(G.s);
     if(t==='ball')placePitSwitches(G.s,sec.ox,sec.oy,sec.G,sec.start,S.doors[G.s]&&S.doors[G.s].inner);
     startBoss(G.s);S.boss.minion=true;S.boss.rush=true;rushSetup(t);G.beam=1;burst(G.hx,G.hy,'#ff5a8a',20);tone(180,.5,'sawtooth',.05,300);
-    if(t==='dice'){S.boss.max=S.boss.hp=16;S.boss.size=4;splitDice(S.boss);} // two big dice from the start
+    if(t==='dice'){S.boss.size=5;S.boss.max=S.boss.hp=diceHits(5,true);} // one giant die: a size up and 2 more HP than the regular dice boss
     bannerShow(`強化された番人 ${G.n} / 4`,S.boss.name,1.6);return;}
   if(G.phase===1){G.phase=2;startGreatCore();}
 }
@@ -1312,7 +1337,7 @@ function escapeRadio(){
   ];
 }
 function startEscape(){
-  S.escape=true;S.tank=true;S.great=null;S.crumQ=null;S.crumAt=null;S.crumPC=undefined;S.gD=null;S.saves=catSaves(S.cats);S.saveFx=null;S.breath=100;startGuide();
+  S.escape=true;S.tank=true;S.great=null;S.crumQ=null;S.crumAt=null;S.crumPC=undefined;S.gD=null;S.saves=catSaves(S.cats);S.saveFx=null;S.catFx=null;S.catHoldMsg=false;S.breath=100;startGuide();
   bannerShow('酸素ボンベを手に入れた！','水の中でも息が続く',2.2);toast('アイテム獲得','酸素ボンベ');trophy('great');
   [523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>tone(f,.18,'triangle',.06),i*110));
   S.state='radio';S.radioWait=2.2; // a beat to take the tank in, then the call comes through
@@ -1395,18 +1420,46 @@ function updEscape(dt){
   updFalls(dt);
   if(!S.crumQ)setupCrumble();
   if(S.saveFx&&(S.saveFx.t+=dt)>1.4)S.saveFx=null;
+  if(S.catFx&&(S.catFx.t+=dt)>.9)S.catFx=null;
   updGuide(dt);
   const P=S.P,pc=S.crumAt.get(K(P.x,P.y));if(pc!==undefined)S.crumPC=pc;
   const lag=(S.crumPC??S.crumT)-S.crumT,cp=crumPace();
   S.crumV=cp.base+(S.crumT>0&&lag>cp.lag?Math.min(cp.boost,(lag-cp.lag)*.35):0);
   if(S.crumT>0&&lag<cp.near)S.crumV*=1-cp.ease*(1-Math.max(0,lag)/cp.near); // the cats hold the ceiling up when it is right behind you
-  S.crumT+=S.crumV*dt;let fell=false,n=0;
+  S.crumT+=S.crumV*dt;
+  if(catsHoldFloor()&&S.crumPC!==undefined&&S.crumT>S.crumPC-1.4){S.crumT=S.crumPC-1.4;if(!S.catHoldMsg){S.catHoldMsg=true;bannerShow('','ねこたちが崩落を食い止めている！',1.6);}}
+  let fell=false,n=0;
   while(S.crumI<S.crumQ.length&&S.crumQ[S.crumI][0]<=S.crumT){const k=S.crumQ[S.crumI++][1];S.crumAt.delete(k);
     if(S.tile.get(k)!==0&&S.tile.get(k)!==3)continue;S.tile.set(k,6);S.arr.delete(k);const f=S.feat.get(k);if(f&&f.type!=='archive')S.feat.delete(k);
     const x=k%8192,y=Math.floor(k/8192);if(n++<4)burst(x,y,'#8a7a62',5);
     if((P.x===x&&P.y===y)||(P.moving&&P.tx===x&&P.ty===y))fell=true;}
   if(n&&Math.random()<.25)tone(40+Math.random()*20,.5,'sawtooth',.04,-10);
   if(fell)crumbleFall();
+  if(S.crumT>0&&(S.rockT=(S.rockT??2)-dt)<=0){S.rockT=.55+Math.random()*.6;
+    for(let t=0;t<12;t++){const x=P.x+Math.round((Math.random()-.5)*7),y=P.y+Math.round((Math.random()-.5)*7),k=K(x,y);
+      if(S.tile.get(k)!==0||S.falls.some(f=>f.x===x&&f.y===y))continue;S.falls.push({x,y,t:0,warn:1.5,drop:1.1,state:'warn',rock:true});break;} // falls slowly: plenty of time to step aside
+    if(Math.random()<.3)tone(40+Math.random()*20,.8,'sawtooth',.05,-10);}
+}
+/* ---------- all 20 cats home: they look after the hero on the way out ---------- */
+const allCatsHelp=()=>S.story&&S.escape&&S.cats>=CATS_TOTAL;
+const catsHoldFloor=()=>allCatsHelp()&&S.cur>9; // deeper than the secret ending's floors, the hero can't fall
+function catRockSave(f){
+  // a kitten swats the rubble away, or tugs the hero clear of it
+  const P=S.P,pull=Math.random()<.5;let moved=false;
+  if(pull){const opts=[[1,0],[-1,0],[0,1],[0,-1]].filter(([a,b])=>isFloor(P.x+a,P.y+b)&&!S.falls.some(g=>g.x===P.x+a&&g.y===P.y+b&&g.state!=='gone'));
+    if(opts.length){const [a,b]=opts[Math.random()*opts.length|0];P.dir=null;P.q=null;S.dash={dir:[a,b],left:1,stop:true,kb:true,t:0,dur:.25};moved=true;}}
+  S.catFx={t:0,kind:moved?'pull':'bat',x:f.x,y:f.y,v:(Math.random()*KITTEN_COATS.length)|0};S.inv=Math.max(S.inv,.4);
+  if(!moved){for(let i=0;i<10;i++)S.parts.push({x:f.x,y:f.y,z:30,vx:(Math.random()-.5)*6,vy:(Math.random()-.5)*6,vz:90+Math.random()*60,life:.7,max:.7,c:'#8a7a62',r:3});tone(900,.12,'square',.05,-300);}
+  else tone(700,.15,'triangle',.05,300);
+  bannerShow('',moved?'ねこが引っぱって助けてくれた！':'ねこが瓦礫を弾き返した！',1);
+}
+function drawCatFx(){
+  const F=S.catFx,[sx,sy]=isoP(),u=F.t/.9,a=u<.7?1:1-(u-.7)/.3;ctx.save();ctx.globalAlpha=clamp(a,0,1);
+  const hop=Math.sin(Math.min(1,u*2)*Math.PI)*22;
+  if(F.kind==='bat'){drawKitten(sx+18,sy-8-hop,.62,tNow,F.v);ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(sx+18,sy-40-hop,16,-2.4,-.6);ctx.stroke();}
+  else{drawKitten(sx-20,sy-4-hop*.4,.62,tNow,F.v);ctx.strokeStyle='rgba(255,220,240,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(sx-12,sy-14);ctx.lineTo(sx-2,sy-18);ctx.stroke();}
+  ctx.fillStyle='#fff';ctx.font='800 13px "M PLUS Rounded 1c",sans-serif';ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,.55)';ctx.lineWidth=4;
+  const tx=F.kind==='bat'?'にゃっ！':'こっち！';ctx.strokeText(tx,sx,sy-74-u*10);ctx.fillText(tx,sx,sy-74-u*10);ctx.restore();
 }
 function crumbleFall(){
   // dropped through: lose a heart and scramble up onto solid ground a little ahead of the collapse
@@ -1414,10 +1467,11 @@ function crumbleFall(){
   while(q.length&&!best){const n=[];for(const k of q)for(const m of [k+1,k-1,k+8192,k-8192]){if(seen.has(m))continue;seen.add(m);const t=S.tile.get(m);
     if(t===0){const at=S.crumAt.get(m);if(at!==undefined&&at-S.crumT>5){best=m;break;}}if(t===0||t===6)n.push(m);}q=n;}
   burst(P.x,P.y,'#8a7a62',12);
-  if(!(S.saves>0)||best===null){tone(300,1,'sine',.07,-260);S.hearts=0;S.state='ending';startEnding('buried');return;}
-  S.saves--;S.saveFx={t:0,x:P.x,y:P.y};tone(300,.3,'sine',.05,-200);[880,1175,1568].forEach((f,i)=>setTimeout(()=>tone(f,.1,'triangle',.05),200+i*80));
+  const free=catsHoldFloor()&&best!==null;
+  if(!free&&(!(S.saves>0)||best===null)){tone(300,1,'sine',.07,-260);S.hearts=0;S.state='ending';startEnding('buried');return;}
+  if(!free)S.saves--;S.saveFx={t:0,x:P.x,y:P.y};tone(300,.3,'sine',.05,-200);[880,1175,1568].forEach((f,i)=>setTimeout(()=>tone(f,.1,'triangle',.05),200+i*80));
   P.x=P.tx=best%8192;P.y=P.ty=Math.floor(best/8192);P.moving=false;P.p=0;S.inv=Math.max(S.inv,2);burst(P.x,P.y,'#ffd0e0',16);
-  bannerShow('ねこたちが引っぱり上げてくれた！',S.saves>0?`ねこの助け 残り ${S.saves} 回`:'もう助けは来ない… 次に落ちたら終わりだ',2);
+  bannerShow('ねこたちが引っぱり上げてくれた！',free?'みんながついている。まだ大丈夫！':S.saves>0?`ねこの助け 残り ${S.saves} 回`:'もう助けは来ない… 次に落ちたら終わりだ',2);
   if(S.state==='play'){const [ix,iy]=iso(P.x,P.y);camX=ix;camY=iy+dep(P.x,P.y)-18;reveal();}
 }
 /* ---------- secret ending: the rescue squad comes after all ---------- */
@@ -1526,10 +1580,11 @@ function drawEnding(){
   for(let i=0;i<n;i++){const side=i%2?1:-1,row=Math.floor(i/2),x=cx+side*(50+row*34)*SC*.8,b=Math.abs(Math.sin(t*5+i))*14;drawKitten(x,gy-18*SC-b,.6*SC,t+i,i);}
   if(k==='party')for(let i=0;i<60;i++){const x=hash(i,13)*W,y=((hash(i,17)*H)+t*(60+hash(i,19)*80))%H;ctx.fillStyle=['#ff6f91','#ffd34d','#7dff9a','#3cc6e6','#d6a8ff'][i%5];ctx.save();ctx.translate(x,y);ctx.rotate(t*3+i);ctx.fillRect(-4,-2,8,4);ctx.restore();}
 }
-let testCats=0,meiClicks=0;
+let testCats=0,meiClicks=0,testUps={}; // hero upgrades for test runs, picked in the test menu
+function applyTestUps(){for(const it of SHOP){if(it.id==='heal')continue;const lv=Math.min(it.max,testUps[it.id]||0);S.up[it.id]=lv;}S.maxHearts=3+(S.up.heart||0);S.hearts=S.maxHearts;}
 function startGreatTest(mode){
   if(mode===true)mode='body';
-  initAudio();hide();newRun(true);S.testMode=true;S.cats=testCats;
+  initAudio();hide();newRun(true);S.testMode=true;S.cats=testCats;applyTestUps();
   const last=STORY_LAST;for(let s=2;s<=last+1;s++)genSection(s);
   const sec=S.sections[last],P=S.P;P.x=P.tx=sec.start[0];P.y=P.ty=sec.start[1];P.moving=false;P.dir=null;P.q=null;P.face=[1,0];
   S.cur=last;S.best=last;S.charge=0;S.frozen.clear();S.sources=[S.sections[last-1].start];
@@ -1545,7 +1600,7 @@ function startGreatTest(mode){
 
 /* ---------- test: stage select ---------- */
 function startStageSelect(floor,story){
-  initAudio();hide();newRun(story);S.testMode=true;if(story)S.cats=testCats;
+  initAudio();hide();newRun(story);S.testMode=true;if(story)S.cats=testCats;applyTestUps();
   const t=floor-1;
   if(t===0){startIntro();return;}
   for(let i=2;i<=t+1;i++)genSection(i);
@@ -1561,16 +1616,17 @@ function startStageSelect(floor,story){
 /* ---------- boss rush power-ups ---------- */
 function rushSetup(t){
   const B=S.boss,G=S.great,sec=S.sections[G.s],c=(sec.G-1)/2,P=S.P;
+  if(t==='amida'){B.max=B.hp=BULL_PHASE_BOMBS*3;B.phaseHits=0;} // 3 phases x 4 bombs
   if(t==='ball'){ // a second ball with its own 3 hit points
     const b=Object.create(B);Object.assign(b,{cx:B.cx+3,cy:B.cy,vx:0,vy:0,mode:'idle',t:1.8,spin:0,bounces:0,dropZ:200,php:3});
     B.php=3;B.max=B.hp=6;B.clones=[b];}
   if(t==='guardian'){ // the guardian needs its body and the water cannons, plus pillars to hide behind
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)S.tile.set(K(G.hx+dx,G.hy+dy),3);
     if(Math.abs(P.x-G.hx)<=1&&Math.abs(P.y-G.hy)<=1){P.x=P.tx=G.hx;P.y=P.ty=G.hy+3;P.moving=false;}
-    for(const [px,py] of [[c,2],[c,sec.G-3],[2,c],[sec.G-3,c]])S.feat.set(K(sec.ox+px,sec.oy+py),{type:'plate',door:G.s,lit:false});
+    for(const [px,py] of [[c,2],[c,sec.G-3],[2,c],[sec.G-3,c]])S.feat.set(K(sec.ox+px,sec.oy+py),{type:'plate',door:G.s,lit:true,charger:true});S.shieldPow=false;
     const cover=[];for(const sx of [-1,1])for(const sy of [-1,1])cover.push([c+2*sx,c+2*sy],[c+2*sx,c+3*sy],[c+3*sx,c+2*sy]);
     for(const [px,py] of cover){const k=K(sec.ox+px,sec.oy+py);if(S.feat.get(k))continue;if(S.tile.get(k)===0&&!(P.x===sec.ox+px&&P.y===sec.oy+py)){S.tile.set(k,7);burst(sec.ox+px,sec.oy+py,'#9aa4ac',8);}}
-    B.volleyT=2;}
+    B.max=B.hp=4;B.volleyT=2;}
 }
 function ballHit(b,msg){
   const B=S.boss;if(!B||B.dying>0)return;b.php=(b.php??B.hp)-1;damageBoss(B,msg);
@@ -1601,8 +1657,8 @@ function updLaser(B,dt){
   updMirrors(dt);
   const L=B.lz||(B.lz={phase:'wait',t:2.5,ang:0,dir:1,beams:[]});L.t-=dt;
   if(B.dying>0){L.phase='wait';L.beams=[];return;}
-  const n=B.rush&&B.hp<=B.max/2?2:1,hits=new Set(),trace=fire=>{L.beams=[];for(let i=0;i<n;i++)L.beams.push(traceLaser(B.cx,B.cy,L.ang+i*Math.PI,34,fire?hits:null));};
-  if(L.phase==='wait'){L.beams=[];if(L.t<=0&&B.stun<=0){const [fx,fy]=pPos();L.dir=Math.random()<.5?1:-1;L.ang=Math.atan2(fy-B.cy,fx-B.cx)-L.dir*1.1;L.phase='aim';L.t=1;tone(1200,.6,'sine',.03,500);trace(false);}}
+  const n=B.rush&&B.hp<=B.max/2?2:1,hits=new Set(),trace=fire=>{L.beams=[];L.refl=null;for(let i=0;i<n;i++)L.beams.push(traceLaser(B.cx,B.cy,L.ang+i*Math.PI,34,fire?hits:null));};
+  if(L.phase==='wait'){L.beams=[];if(L.t<=0&&B.stun<=0){const [fx,fy]=pPos();L.dir=Math.random()<.5?1:-1;L.ang=Math.atan2(fy-B.cy,fx-B.cx)-L.dir*1.1;L.phase='aim';L.t=1;L.reflHit=false;tone(1200,.6,'sine',.03,500);trace(false);}}
   else if(L.phase==='aim'){trace(false);if(L.t<=0){L.phase='fire';L.t=4.2;tone(140,4,'sawtooth',.05,-30);}}
   else{
     L.ang+=L.dir*((B.rush?.5:.4)+.05*(B.max-B.hp))*dt;trace(true); // slow, readable sweep
@@ -1610,7 +1666,7 @@ function updLaser(B,dt){
     const [fx,fy]=pPos();
     for(const pts of L.beams)for(let i=0;i<pts.length-1;i++){const [ax,ay]=pts[i],[bx,by]=pts[i+1];
       if(i===0){if(Math.hypot(fx-B.cx,fy-B.cy)<1.3)continue;} // the body itself is not the beam
-      if(segDist(fx,fy,ax,ay,bx,by)<.42){hurt();break;}}
+      if(segDist(fx,fy,ax,ay,bx,by)<.42){if(B.rush&&S.shieldPow&&S.guard&&!(S.pStun>0)&&guardFacing({x:ax,y:ay}))shieldReflect(B,L,pts,i,fx,fy);else hurt({x:ax,y:ay});break;}}
     if(L.t<=0){L.phase='wait';L.t=B.rush?Math.max(1.1,1.9-.2*(B.max-B.hp)):Math.max(2,3.2-.3*(B.max-B.hp));L.beams=[];}}
 }
 function drawLaser(){
@@ -1628,6 +1684,23 @@ function drawLaser(){
   ctx.save();ctx.translate(ox,oy);ctx.rotate(L.ang*.5);ctx.strokeStyle='rgba(255,120,100,.9)';ctx.lineWidth=2.5;
   for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.arc(0,0,11,0,.9);ctx.stroke();}
   ctx.fillStyle=L.phase==='fire'?'#fff2e8':'rgba(255,80,80,.9)';ctx.beginPath();ctx.arc(0,0,4.5+Math.sin(tNow*30)*1.5,0,7);ctx.fill();ctx.restore();
+}
+/* the empowered shield: a guarded laser bounces off it, and a bounced beam that reaches the guardian hurts it */
+function shieldReflect(B,L,pts,i,fx,fy){
+  const [ax,ay]=pts[i],[bx,by]=pts[i+1],l=Math.hypot(bx-ax,by-ay)||1,dx=(bx-ax)/l,dy=(by-ay)/l,n=S.P.face,dot=dx*n[0]+dy*n[1],rx=dx-2*dot*n[0],ry=dy-2*dot*n[1];
+  pts.length=i+1;pts.push([fx,fy]); // the beam stops at the shield
+  const r=traceLaser(fx+rx*.3,fy+ry*.3,Math.atan2(ry,rx),30);L.refl=r;
+  if(Math.random()<.4)S.parts.push({x:fx,y:fy,z:18,vx:(Math.random()-.5)*2,vy:(Math.random()-.5)*2,vz:60,life:.3,max:.3,c:'#dff8ff',r:2});
+  let hit=false;for(let j=0;j<r.length-1&&!hit;j++)if(segDist(B.cx,B.cy,r[j][0],r[j][1],r[j+1][0],r[j+1][1])<1.5)hit=true;
+  if(hit&&!L.reflHit&&B.dying<=0){L.reflHit=true;damageBoss(B,'反射レーザー');tone(1500,.3,'triangle',.06,-400);
+    S.shieldPow=false;setChargers(true);if(B.hp>0)setTimeout(()=>{if(S.boss&&S.boss.type==='guardian'&&S.boss.rush&&!S.shieldPow)bannerShow('','盾の輝きが消えた…',1.4);},1200);}
+}
+function drawReflect(){
+  const B=S.boss;if(!B||B.type!=='guardian'||!B.lz||!B.lz.refl||B.lz.phase!=='fire')return;
+  const sp=B.lz.refl.map(([x,y])=>{const q=isoD(x,y);return[q[0],q[1]-24];});
+  ctx.lineCap='round';ctx.lineJoin='round';const path=()=>{ctx.beginPath();ctx.moveTo(sp[0][0],sp[0][1]);for(let i=1;i<sp.length;i++)ctx.lineTo(sp[i][0],sp[i][1]);};
+  ctx.strokeStyle='rgba(90,210,255,.45)';ctx.lineWidth=16;path();ctx.stroke();ctx.strokeStyle='rgba(225,250,255,.95)';ctx.lineWidth=5;path();ctx.stroke();
+  ctx.fillStyle='rgba(225,250,255,.9)';ctx.beginPath();ctx.arc(sp[0][0],sp[0][1],10+Math.random()*4,0,7);ctx.fill();ctx.lineCap='butt';ctx.lineJoin='miter';
 }
 const mirrorOn=()=>S.boss&&S.boss.type==='guardian'&&S.mirror&&S.mirrorS===S.boss.s;
 function drawMirror(x,y,cx,cy){
@@ -1661,12 +1734,14 @@ function seenWalls(){
   return seen;
 }
 function dropMirror(first){
+  // two facing walls at a time: faces 0/1 are north/south, 2/3 west/east; the next pair is the other axis
   const seen=seenWalls(),faces=S.mirFaces.map(f=>f.filter(k=>seen.has(k)));
-  let opts=[0,1,2,3].filter(f=>faces[f].length>=3&&(!S.mirFace||f!==S.mirFace.f));if(!opts.length)opts=[0,1,2,3].filter(f=>faces[f].length);
-  const f=opts[Math.random()*opts.length|0];if(f===undefined)return;
-  S.mirFace={f,drop:0,idle:0};S.mirror=new Set(faces[f]);S.mirHit=new Map();
+  const pairs=[[0,1],[2,3]].filter(([a,b])=>faces[a].length+faces[b].length>=4);
+  let opts=pairs.filter((pr,i)=>!S.mirFace||pr[0]!==S.mirFace.f);if(!opts.length)opts=pairs;
+  const pr=opts[Math.random()*opts.length|0];if(!pr)return;
+  S.mirFace={f:pr[0],drop:0,idle:0};S.mirror=new Set([...faces[pr[0]],...faces[pr[1]]]);S.mirHit=new Map();
   tone(1500,.5,'sine',.04,-600);
-  setTimeout(()=>{if(mirrorOn()){tone(2200,.15,'triangle',.05);bannerShow('',first?'壁の一面が鏡になった！ レーザーが跳ね返るぞ':'鏡が降ってきた！',1.6);}},first?1700:500);
+  setTimeout(()=>{if(mirrorOn()){tone(2200,.15,'triangle',.05);if(!(first&&S.boss.rush))bannerShow('',first?'向かい合う壁が鏡になった！ レーザーが跳ね返るぞ':'鏡が降ってきた！',1.6);}},first?1700:500); // the final battle explains nothing up front
 }
 const mirrorLanded=()=>!S.mirFace||S.mirFace.drop>=.8;
 function crackMirror(k,dt){
@@ -1691,7 +1766,7 @@ function askContinue(){
   $('contyes').onclick=continueStory;$('contno').onclick=()=>scoreEntry();
 }
 function clearBossHall(s){
-  for(const [k,t] of S.tile)if((t===3||t===5||t===7)&&S.sec.get(k)===s)S.tile.set(k,0);
+  for(const [k,t] of S.tile)if((t===3||t===4||t===5||t===7)&&S.sec.get(k)===s&&S.sections[s].boss)S.tile.set(k,0);
   S.falls=[];S.rungs.clear();S.spears=[];S.spearQ=[];S.spearRespawn=[];S.shots=[];S.rings=[];S.waves=[];
   for(const [k,f] of [...S.feat])if(S.sec.get(k)===s&&['plate','bombsw','spearsw','pitsw','gbomb'].includes(f.type))S.feat.delete(k);
   for(const pt of S.pits||[])for(const [x,y] of pt.cells)if(S.tile.get(K(x,y))===6)S.tile.set(K(x,y),0);S.pits=[];
@@ -1728,7 +1803,7 @@ function updContinue(dt){
 }
 function giveUpContinue(){
   if(!S||S.state!=='continue')return;$('cont').hidden=true;tone(160,.8,'sawtooth',.06,-100);
-  S.state='over';bannerShow('','GAME OVER',2);setTimeout(()=>{$('banner').hidden=true;bannerT=0;toTitle();},1800);
+  S.state='rescue';S.rescue={t:0,a:0,over:true};setTimeout(()=>{tone(880,.12,'triangle',.05);setTimeout(()=>tone(1175,.18,'triangle',.05),120);},700);
 }
 /* ---------- boss hall ---------- */
 function genBoss(s,ox,oy,G,start){
@@ -1763,12 +1838,12 @@ function startBoss(s){
     vx:0,vy:0,mode:'idle',t:1.2,spin:0,bounces:0,
     // dice
     ix:hx,iy:hy,fx:hx,fy:hy,tt:0,steps:0,face:1,hop:0};
-  S.drainT=0;S.shots=[];S.rings=[];S.falls=[];S.bossHeart=S.hearts;S.boss.clones=[];S.boss.php=S.boss.hp;S.spears=[];S.spearQ=[];if(S.boss.type==='dice'){S.boss.max=S.boss.hp=15;S.boss.size=4;}S.spearRespawn=[];
+  S.drainT=0;S.shots=[];S.rings=[];S.falls=[];S.bossHeart=S.hearts;S.boss.clones=[];S.boss.php=S.boss.hp;S.spears=[];S.spearQ=[];if(S.boss.type==='dice'){S.boss.size=4;S.boss.max=S.boss.hp=diceHits(4,false);}S.spearRespawn=[];
   bannerShow(`最深部 B${s+1}F`,S.boss.name,2.4);tone(110,.7,'sawtooth',.06,-40);setTimeout(()=>tone(82,.9,'sawtooth',.06,-20),250);
 }
 function lightVolley(){const B=S.boss,pl=[];for(const f of S.feat.values())if(f.type==='plate'&&f.door===B.s)pl.push(f);
   pl.sort(()=>Math.random()-.5);B.got=0;for(let i=0;i<pl.length;i++)pl[i].lit=i<B.need;tone(1200,.12,'sine',.05);}
-function hurt(){if(S.inv>0||S.state!=='play')return;if(loseHeart())bannerShow('','被弾！ 衝撃波を放った',1.1);}
+function hurt(src){if(S.inv>0||S.dodgeT>0||S.state!=='play')return;if(S.guard&&!(S.pStun>0)&&guardFacing(src)){guardBlock(src);return;}if(loseHeart())bannerShow('','被弾！ 衝撃波を放った',1.1);}
 const bossRadius=B=>B.type==='guardian'?1.6:1;
 function bossKilled(B,msg){if(S.testMode)return;if(!META.stats.bossTypes.includes(B.type)){META.stats.bossTypes.push(B.type);saveMeta();}trophy('boss_'+B.type);if(msg==='衝撃波')trophy('wave_kill');if(S.hearts>=S.bossHeart)trophy('nodmg_boss');}
 function damageBoss(B,msg){
@@ -1777,21 +1852,27 @@ function damageBoss(B,msg){
   if(B.hp<=0){bossKilled(B,msg);B.dying=B.minion?.7:2.2;bannerShow('',msg+'撃破！',2);for(const g of S.feat.values())if(g.type==='plate'&&g.door===B.s)g.lit=false;}
   else{B.volleyT=1.6;bannerShow('',`${msg}命中！ 残り ${B.hp}`,1.1);}
 }
+// a shockwave travels through open floor only: walls, pillars and blocks in between stop it
+function waveSees(w,x,y,r){
+  const d=Math.hypot(x-w.x,y-w.y);if(d<.6)return true;const n=Math.ceil(d/.25),stop=Math.max(0,d-r-.2);
+  for(let i=1;i<n;i++){const f=i/n;if(f*d>stop)break;const t=S.tile.get(K(Math.round(w.x+(x-w.x)*f),Math.round(w.y+(y-w.y)*f)));if(!(t===0||t===6))return false;}
+  return true;
+}
 function updWaves(dt){
   const B=S.boss;
   for(const w of S.waves){w.r+=6.5*dt;
-    S.shots=S.shots.filter(p=>Math.abs(Math.hypot(p.x-w.x,p.y-w.y)-w.r)>.5);
-    if(B&&B.type==='dice'&&B.dying<=0&&!w.hit){for(const d of [B,...(B.clones||[])]){if(Math.abs(Math.hypot(d.cx-w.x,d.cy-w.y)-w.r)<.9){w.hit=true;hitDie(d,'衝撃波');break;}}}
-    else if(B&&B.type==='ball'&&B.dying<=0&&!w.hit){for(const b of [B,...(B.clones||[])]){if(Math.abs(Math.hypot(b.cx-w.x,b.cy-w.y)-w.r)<1.1){w.hit=true;ballHit(b,'衝撃波');break;}}}
-    else if(B&&B.dying<=0&&!w.hit){const dd=Math.hypot(B.cx-w.x,B.cy-w.y),br=bossRadius(B);if(w.r>=dd-br&&w.r<=dd+br){w.hit=true;damageBoss(B,'衝撃波');}}}
-  for(const w of S.waves)S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.abs(Math.hypot(mx-w.x,my-w.y)-w.r)<.6){burst(mx,my,'#7fd8f0',10);return false;}return true;});
+    S.shots=S.shots.filter(p=>Math.abs(Math.hypot(p.x-w.x,p.y-w.y)-w.r)>.5||!waveSees(w,p.x,p.y,0));
+    if(B&&B.type==='dice'&&B.dying<=0&&!w.hit){for(const d of [B,...(B.clones||[])]){if(Math.abs(Math.hypot(d.cx-w.x,d.cy-w.y)-w.r)<.9&&waveSees(w,d.cx,d.cy,.5)){w.hit=true;hitDie(d,'衝撃波');break;}}}
+    else if(B&&B.type==='ball'&&B.dying<=0&&!w.hit){for(const b of [B,...(B.clones||[])]){if(Math.abs(Math.hypot(b.cx-w.x,b.cy-w.y)-w.r)<1.1&&waveSees(w,b.cx,b.cy,.5)){w.hit=true;ballHit(b,'衝撃波');break;}}}
+    else if(B&&B.dying<=0&&!w.hit&&!(B.type==='guardian'&&B.rush)){const dd=Math.hypot(B.cx-w.x,B.cy-w.y),br=bossRadius(B);if(w.r>=dd-br&&w.r<=dd+br&&waveSees(w,B.cx,B.cy,br)){w.hit=true;damageBoss(B,'衝撃波');}}}
+  for(const w of S.waves)S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.abs(Math.hypot(mx-w.x,my-w.y)-w.r)<.6&&waveSees(w,mx,my,0)){burst(mx,my,'#7fd8f0',10);return false;}return true;});
   S.waves=S.waves.filter(w=>w.r<w.max);
 }
 const solidForBoss=(x,y)=>{const t=S.tile.get(K(Math.round(x),Math.round(y)));return t!==0&&t!==6;};
 function guardianAI(B,dt){
   B.atkT-=dt;if(B.atkT>0)return;B.atkN++;
   if(B.atkN%3===0){S.rings.push({x:B.cx,y:B.cy,r:1.6,max:4.8});tone(90,.4,'sine',.07,-30);}
-  else{const [fx,fy]=pPos(),a=Math.atan2(fy-B.cy,fx-B.cx),rg=B.max-B.hp,n=rg>=2?5:(rg>=1||B.loop>=1)?3:1;
+  else if(B.type!=='guardian'){const [fx,fy]=pPos(),a=Math.atan2(fy-B.cy,fx-B.cx),rg=B.max-B.hp,n=rg>=2?5:(rg>=1||B.loop>=1)?3:1;
     for(let i=0;i<n;i++){const aa=a+(i-(n-1)/2)*.38;S.shots.push({x:B.cx+Math.cos(aa)*1.7,y:B.cy+Math.sin(aa)*1.7,vx:Math.cos(aa)*3,vy:Math.sin(aa)*3,life:6});}
     tone(260,.15,'triangle',.05,-120);}
   B.atkT=Math.max(.8,2.4-.3*Math.min(2,B.loop)-.5*(B.max-B.hp));
@@ -1839,8 +1920,9 @@ function updFalls(dt){
     if(f.state==='warn'&&f.t>=f.warn){f.state='drop';}
     else if(f.state==='drop'&&f.t>=f.warn+f.drop){
       const k=K(f.x,f.y),onP=(P.x===f.x&&P.y===f.y)||(P.moving&&P.tx===f.x&&P.ty===f.y);
-      tone(70,.2,'square',.07,-20);burst(f.x,f.y,'#b9a27a',8);
-      if(f.rock){if(onP)hurt();burst(f.x,f.y,'#8a7a62',8);f.state='gone';}
+      if(!(f.amida&&onP)){tone(70,.2,'square',.07,-20);burst(f.x,f.y,'#b9a27a',8);}
+      if(f.amida&&onP){f.t=f.warn+f.drop*.6;continue;} // rising block: waits for the hero to step off, no damage
+      if(f.rock){if(onP){if(allCatsHelp())catRockSave(f);else hurt();}burst(f.x,f.y,'#8a7a62',8);f.state='gone';}
       else if(f.rung){S.rungs.add(k);if(onP)hurt();f.state='gone';}
       else if(onP){hurt();f.state='gone';if(f.pillar)pillarSwitches(true);}
       else if(S.tile.get(k)===0&&f.pillar){S.tile.set(k,7);f.state='gone';burst(f.x,f.y,'#9aa4ac',10);tone(55,.5,'square',.08,-15);}
@@ -1853,7 +1935,7 @@ function updBoss(dt){
   B.flash=Math.max(0,B.flash-dt);
   updFalls(dt);
   if(B.dying>0){B.dying-=dt;if(Math.random()<dt*30)burst(B.cx+(Math.random()-.5)*2.4,B.cy+(Math.random()-.5)*2.4,THEMES[S.sections[B.s].theme].wall[0],2);if(B.dying<=0)finishBoss();return;}
-  if(B.type!=='amida'&&B.type!=='dice'&&B.type!=='ball'&&B.type!=='great'&&B.volleyT>0){B.volleyT-=dt;if(B.volleyT<=0)lightVolley();}
+  if(B.type!=='amida'&&B.type!=='dice'&&B.type!=='ball'&&B.type!=='great'&&!(B.type==='guardian'&&B.rush)&&B.volleyT>0){B.volleyT-=dt;if(B.volleyT<=0)lightVolley();}
   if(S.drainT>0)return;
   updSpears(dt);updPits(dt);
   if(B.stun>0){B.stun-=dt;if(B.type==='ball'){for(const b of [B,...(B.clones||[])]){b.vx*=.8;b.vy*=.8;if(b.dropZ>0)b.dropZ=Math.max(0,b.dropZ-dt*520);ballAI(b,0);}}if(B.type==='dice')for(const d of [B,...(B.clones||[])])diceKick(d,dt);}
@@ -1863,21 +1945,31 @@ function updBoss(dt){
   else if(B.type==='dice'){for(const d of [B,...(B.clones||[])])if(!diceKick(d,dt))diceAI(d,dt);}
   if(B.type==='guardian')updLaser(B,dt); // the laser keeps its own timer, even while stunned
   const [fx,fy]=pPos();
-  if(B.clones&&B.stun<=0)for(const c of B.clones)if(Math.hypot(fx-c.cx,fy-c.cy)<(B.type==='ball'?1:.75*diceScale(c)))hurt();
-  if(B.type!=='guardian'&&B.stun<=0&&Math.hypot(fx-B.cx,fy-B.cy)<(B.type==='ball'?1:B.type==='amida'?.85:B.type==='dice'?.75*diceScale(B):.75))hurt();
-  for(const p of S.shots){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;const t=S.tile.get(K(Math.round(p.x),Math.round(p.y)));if(t!==0&&t!==3)p.life=0;if(Math.hypot(p.x-fx,p.y-fy)<.45){hurt();p.life=0;}}
+  if(B.clones&&B.stun<=0)for(const c of B.clones)if(Math.hypot(fx-c.cx,fy-c.cy)<(B.type==='ball'?1:.75*diceScale(c)))hurt(c);
+  if(B.type!=='guardian'&&B.stun<=0&&Math.hypot(fx-B.cx,fy-B.cy)<(B.type==='ball'?1:B.type==='amida'?.85:B.type==='dice'?.75*diceScale(B):.75))hurt(B);
+  for(const p of S.shots){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;const t=S.tile.get(K(Math.round(p.x),Math.round(p.y)));if(t!==0&&t!==3)p.life=0;if(!p.glanced&&Math.hypot(p.x-fx,p.y-fy)<.45){if(S.guard&&!(S.pStun>0)&&guardFacing(p))glanceShot(p,fx,fy);else{hurt(p);p.life=0;}}}
   S.shots=S.shots.filter(p=>p.life>0);
-  for(const r of S.rings){r.r+=3*dt;if(Math.abs(Math.hypot(fx-r.x,fy-r.y)-r.r)<.3)hurt();}
+  for(const r of S.rings){r.r+=3*dt;if(Math.abs(Math.hypot(fx-r.x,fy-r.y)-r.r)<.3)hurt(r);}
   S.rings=S.rings.filter(r=>r.r<r.max);
 }
+function drawChargerCores(){
+  const B=S.boss;if(!B||B.type!=='guardian'||!B.rush||B.dying>0)return;
+  for(const [k,f] of S.feat){if(f.type!=='plate'||!f.charger||!f.lit)continue;const x=k%8192,y=Math.floor(k/8192),[cx,cy]=isoD(x,y),bob=Math.sin(tNow*3+x)*4;
+    ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(cx,cy,8,4,0,0,7);ctx.fill();
+    crystalPal(cx,cy-44+bob,.24,tNow,tNow*4+x,PAL_BLUE);}
+}
+function setChargers(on){for(const f of S.feat.values())if(f.type==='plate'&&f.charger)f.lit=on;}
 function firePlate(f,x,y){
-  const B=S.boss;f.lit=false;B.got++;S.jets.push({x0:x,y0:y,x1:B.cx,y1:B.cy,t:.6});tone(500,.3,'sawtooth',.04,500);
+  const B=S.boss;if(B.type==='guardian'&&B.rush){if(!S.shieldPow&&!S.shieldCharging){
+      S.shieldCharging=true;setChargers(false);S.jets.push({x0:x,y0:y,x1:B.cx,y1:B.cy,t:.6});tone(500,.3,'sawtooth',.04,500);
+      setTimeout(()=>{if(!S.boss||S.boss!==B)return;burst(B.cx,B.cy,'#bff3ff',10);tone(160,.25,'square',.05,-40);bannerShow('','……効いていない！',.9);},500);
+      setTimeout(()=>{S.shieldCharging=false;if(!S.boss||S.boss!==B||B.dying>0)return;S.shieldPow=true;const [fx,fy]=pPos();burst(fx,fy,'#8fe3f5',18);[660,990,1320].forEach((q,i)=>setTimeout(()=>tone(q,.12,'triangle',.05),i*70));bannerShow('','盾に不思議な力が宿っている',2);},1400);}return;}f.lit=false;B.got++;S.jets.push({x0:x,y0:y,x1:B.cx,y1:B.cy,t:.6});tone(500,.3,'sawtooth',.04,500);
   if(B.got<B.need){bannerShow('',`放水砲 ${B.got} / ${B.need}`,.9);return;}
   damageBoss(B,'');
 }
 function finishBoss(){
   const B=S.boss,sec=S.sections[B.s],dr=S.doors[B.s];
-  for(const [k,t] of S.tile)if((t===3||t===5||t===7)&&S.sec.get(k)===B.s)S.tile.set(k,0);
+  for(const [k,t] of S.tile)if((t===3||t===4||t===5||t===7)&&S.sec.get(k)===B.s)S.tile.set(k,0);
   S.falls=[];S.rungs.clear();
   for(const [k,f] of [...S.feat])if((f.type==='plate'&&f.door===B.s)||f.type==='bombsw'||f.type==='spearsw'||f.type==='pitsw')S.feat.delete(k);S.spears=[];S.spearQ=[];for(const pt of S.pits||[])for(const [x,y] of pt.cells)if(S.tile.get(K(x,y))===6)S.tile.set(K(x,y),0);S.pits=[];
   S.score+=1000*(B.z+1);S.kills++;S.boss=null;S.shots=[];S.rings=[];
@@ -1892,10 +1984,10 @@ function finishBoss(){
 function newRun(story){
   S={tile:new Map(),sec:new Map(),arr:new Map(),feat:new Map(),seen:new Set(),queued:new Set(),heap:[],doorAt:new Map(),grates:new Set(),
      boss:null,drainT:0,drainF:1,shots:[],rings:[],jets:[],waves:[],falls:[],inv:0,rescue:null,kills:0,continues:0,contAsked:false,placedArch:new Set(),mobs:[],rungs:new Set(),lastBossType:null,spears:[],spearQ:[],pits:[],spearRespawn:[],pressureT:0,bossHeart:0,
-     hearts:3,maxHearts:3,wallet:0,up:{speed:0,slow:0,swim:0,tank:0,heart:0},shopOpen:false,
+     hearts:3,maxHearts:3,wallet:0,up:{speed:0,slow:0,swim:0,tank:0,heart:0,roll:0,bash:0},shopOpen:false,
      rots:[],rotC:new Set(),armSet:new Set(),dryT:new Map(),
      sections:[],doors:[],sources:[[1,1]],cur:0,best:0,score:0,coins:0,
-     wt:0,charge:0,released:false,surge:0,vw:1.5,vlv:1,ice:0,boot:0,breath:100,state:'play',time:0,
+     wt:0,charge:0,released:false,surge:0,vw:1.5,vlv:1,ice:0,boot:0,breath:100,stam:100,stamCd:0,dash:null,dodgeT:0,ghosts:[],guard:false,pStun:0,state:'play',time:0,
      zOver:new Map(),frozen:new Set(),thaw:0,introT:0,introFrozen:true,
      P:{x:ORG+1,y:ORG+1,tx:ORG+1,ty:ORG+1,p:0,moving:false,dir:null,q:null,face:[1,0]},parts:[]};
   S.story=!!story;S.cats=0;
@@ -1906,21 +1998,264 @@ function newRun(story){
 
 /* ---------- input ---------- */
 function queue(d){if(!S||S.state!=='play')return;const P=S.P;
+  if(S.guard&&!(S.pStun>0)){P.face=d;P.q=null;return;} // guard + direction: turn to face it
   if(P.moving&&P.dir&&d[0]===-P.dir[0]&&d[1]===-P.dir[1]){[P.x,P.tx]=[P.tx,P.x];[P.y,P.ty]=[P.ty,P.y];P.p=1-P.p;P.dir=d;P.face=d;P.q=null;return;}
   P.q=d;}
+/* ---------- guard (hold X): no stamina, blocks any hit but knocks you back ---------- */
+function awayDir(src){
+  const P=S.P;let dx=0,dy=0;
+  if(src){const sx=src.cx??src.x,sy=src.cy??src.y;dx=P.x-sx;dy=P.y-sy;}
+  const opts=[];if(src&&(dx||dy)){const ax=[Math.sign(dx)||0,0],ay=[0,Math.sign(dy)||0];if(Math.abs(dx)>=Math.abs(dy))opts.push(ax,ay);else opts.push(ay,ax);}
+  opts.push([-P.face[0],-P.face[1]]);
+  return opts.find(d=>(d[0]||d[1])&&isFloor(P.x+d[0],P.y+d[1]))||null;
+}
+// the shield only covers what is in front of you (about 70 degrees either side)
+function guardFacing(src){
+  if(!src)return false;const [fx,fy]=pPos(),dx=(src.cx??src.x)-fx,dy=(src.cy??src.y)-fy,l=Math.hypot(dx,dy);if(l<.3)return true;
+  const f=S.P.face;return (dx*f[0]+dy*f[1])/l>.34;
+}
+/* whatever hits the shield glances off: it never passes through the hero */
+function shieldNormal(ex,ey,fx,fy){let nx=ex-fx,ny=ey-fy,l=Math.hypot(nx,ny);if(l<.05){nx=S.P.face[0];ny=S.P.face[1];l=1;}return[nx/l,ny/l];}
+function deflectEnemy(src,fx,fy){
+  if(!src||src.cx===undefined)return;const B=S.boss,[nx,ny]=shieldNormal(src.cx,src.cy,fx,fy);
+  if(B&&B.type==='ball'&&src.vx!==undefined){ // the ball ricochets off
+    const dot=src.vx*nx+src.vy*ny;if(dot<0){src.vx-=2*dot*nx;src.vy-=2*dot*ny;}
+    const sp=Math.max(6,Math.hypot(src.vx,src.vy));const l=Math.hypot(src.vx,src.vy)||1;src.vx=src.vx/l*sp;src.vy=src.vy/l*sp;
+    src.cx=fx+nx*1.15;src.cy=fy+ny*1.15;src.mode=src.mode==='idle'?'roll':src.mode;}
+  else if(B&&B.type==='dice'&&src.size!==undefined){src.kick=2;src.kdir=Math.abs(nx)>=Math.abs(ny)?[Math.sign(nx)||1,0]:[0,Math.sign(ny)||1];if(src.mode!=='tumble'){src.mode='idle';src.t=0;}}
+  else if(src.type==='amida')src.kbT=.7;
+  burst(fx+nx*.6,fy+ny*.6,'#ffe98a',10);
+}
+function glanceShot(p,fx,fy){
+  const [nx,ny]=shieldNormal(p.x,p.y,fx,fy),dot=p.vx*nx+p.vy*ny;if(dot<0){p.vx-=2*dot*nx;p.vy-=2*dot*ny;}
+  p.x=fx+nx*.6;p.y=fy+ny*.6;p.glanced=true;burst(p.x,p.y,'#ffe98a',6);tone(1300,.06,'square',.04,-300);
+}
+function bounceMob(m,fx,fy){
+  if(m.moving&&(m.tx-m.x)*(fx-m.x)+(m.ty-m.y)*(fy-m.y)>0){[m.x,m.tx]=[m.tx,m.x];[m.y,m.ty]=[m.ty,m.y];m.p=1-m.p;}if(m.dir)m.dir=[-m.dir[0],-m.dir[1]];m.fleeT=1.2;
+  if(!(tNow-(m.clangAt||0)<.4)){const [mx,my]=mobPos(m);burst((mx+fx)/2,(my+fy)/2,'#ffe98a',8);tone(1000,.08,'square',.04,-300);m.clangAt=tNow;}
+}
+function guardBlock(src){
+  const P=S.P,bull=src&&src.type==='amida',[fx,fy]=pPos();deflectEnemy(src,fx,fy);
+  S.inv=bull?1.4:.6;burst(fx,fy,'#bfeaff',12);tone(1100,.12,'square',.05,-300);tone(400,.2,'triangle',.05,-100);
+  const d=awayDir(src),n=bull?3:1;
+  if(d){P.dir=null;P.q=null;S.dash={dir:d,left:n,stop:true,kb:true,t:0,dur:.3};}
+  if(bull){S.pStun=2.5;S.guard=false;bannerShow('','弾き飛ばされた！ 目が回る…',1.4);tone(160,.5,'sawtooth',.05,-60);}
+  else bannerShow('','ガキン！',.6);
+}
+function drawGuardFx(sx,sy){
+  if(S.pStun>0){ // dizzy stars over the head
+    for(let i=0;i<3;i++){const a=tNow*5+i*2.1;ctx.fillStyle='#ffe98a';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('★',sx+Math.cos(a)*14,sy-52+Math.sin(a)*5);}return;}
+  const pow=S.shieldPow&&S.boss&&S.boss.type==='guardian'&&S.boss.rush;
+  if(pow&&!S.guard){ctx.strokeStyle=`rgba(120,230,255,${.35+.25*Math.sin(tNow*6)})`;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(sx,sy-2,16,8,0,0,7);ctx.stroke();}
+  if(!S.guard)return;
+  const P=S.P,f=P.face,ux=(f[0]-f[1])*.7,uy=(f[0]+f[1])*.35,cx=sx+ux*16,cy=sy-18+uy*16;
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(Math.atan2(uy,ux));
+  if(pow){ctx.shadowColor='#7fe8ff';ctx.shadowBlur=14;}
+  ctx.fillStyle=pow?`rgba(120,230,255,${.45+.2*Math.sin(tNow*12)})`:'rgba(140,220,255,.28)';ctx.strokeStyle=pow?'#e8fdff':'rgba(200,245,255,.9)';ctx.lineWidth=pow?3.5:2.5;
+  ctx.beginPath();ctx.ellipse(0,0,7,20,0,0,7);ctx.fill();ctx.stroke();ctx.restore();
+}
+/* ---------- final-battle bull: blocks scattered all over, a high-speed loop until a bomb hits it ---------- */
+function rushRing(B,r){
+  // a winding loop: waypoints all around the room at random distances, joined by L-shaped runs
+  const sec=S.sections[B.s],G=sec.G,ox=sec.ox,oy=sec.oy,c=(G-1)/2,lo=1,hi=G-2,n=10,off=Math.random()*Math.PI*2,way=[];
+  for(let i=0;i<n;i++){const a=off+i*Math.PI*2/n+(Math.random()-.5)*.35,rad=2.2+Math.random()*(c-3.2);
+    way.push([clamp(Math.round(c+Math.cos(a)*rad),lo,hi),clamp(Math.round(c+Math.sin(a)*rad),lo,hi)]);}
+  const pts=[];let [x,y]=way[0];pts.push([x,y]);
+  for(let i=1;i<=n;i++){const [tx,ty]=way[i%n],hFirst=i%2===0;
+    const go=(ax)=>{if(ax==='x')while(x!==tx){x+=Math.sign(tx-x);pts.push([x,y]);}else while(y!==ty){y+=Math.sign(ty-y);pts.push([x,y]);}};
+    if(hFirst){go('x');go('y');}else{go('y');go('x');}}
+  pts.pop(); // back at the start
+  const loop=pts.filter((p,i)=>i===0||p[0]!==pts[i-1][0]||p[1]!==pts[i-1][1]).map(([x,y])=>[ox+x,oy+y]);
+  if(Math.random()<.5)loop.reverse();
+  let bi=0,bd=1e9;loop.forEach(([x,y],i)=>{const d=Math.hypot(x-B.cx,y-B.cy);if(d<bd){bd=d;bi=i;}});
+  return loop.slice(bi).concat(loop.slice(0,bi));
+}
+function rushMaze(B){
+  // a maze on a lattice: open "rooms" on odd cells, walls between them; the bull's loop is carved first,
+  // then a random spanning tree links every room, plus a few extra gaps so nobody gets cornered
+  const sec=S.sections[B.s],G=sec.G,ox=sec.ox,oy=sec.oy,N=Math.floor((G-1)/2),node=i=>1+2*i;
+  const open=new Set(),key=(x,y)=>y*64+x,op=(x,y)=>open.add(key(x,y));
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++)op(node(i),node(j));
+  // the loop, in node space, then expanded to cells
+  const c=(N-1)/2,n=8,off=Math.random()*Math.PI*2,way=[];
+  for(let i=0;i<n;i++){const a=off+i*Math.PI*2/n+(Math.random()-.5)*.4,r=1+Math.random()*(c-1);
+    way.push([clamp(Math.round(c+Math.cos(a)*r),0,N-1),clamp(Math.round(c+Math.sin(a)*r),0,N-1)]);}
+  const cells=[];let [x,y]=way[0];cells.push([node(x),node(y)]);
+  const stepTo=(dx,dy)=>{cells.push([node(x)+dx,node(y)+dy]);x+=dx;y+=dy;cells.push([node(x),node(y)]);};
+  for(let i=1;i<=n;i++){const [tx,ty]=way[i%n],go=ax=>{if(ax)while(x!==tx)stepTo(Math.sign(tx-x),0);else while(y!==ty)stepTo(0,Math.sign(ty-y));};
+    if(i%2){go(1);go(0);}else{go(0);go(1);}}
+  cells.pop();
+  const loop=cells.filter((q,i)=>i===0||q[0]!==cells[i-1][0]||q[1]!==cells[i-1][1]);
+  for(const [lx,ly] of loop)op(lx,ly);
+  // spanning tree from the loop's rooms
+  const seen=new Set(loop.filter(([lx,ly])=>lx%2&&ly%2).map(([lx,ly])=>key((lx-1)/2,(ly-1)/2)));
+  const stack=[...seen].map(k=>[k%64,Math.floor(k/64)]).sort(()=>Math.random()-.5);
+  while(stack.length){const [i,j]=stack[stack.length-1];const nb=[[1,0],[-1,0],[0,1],[0,-1]].filter(([a,b])=>i+a>=0&&j+b>=0&&i+a<N&&j+b<N&&!seen.has(key(i+a,j+b))).sort(()=>Math.random()-.5);
+    if(!nb.length){stack.pop();continue;}const [a,b]=nb[0];op(node(i)+a,node(j)+b);seen.add(key(i+a,j+b));stack.push([i+a,j+b]);}
+  for(let t=0;t<6;t++){const i=Math.random()*N|0,j=Math.random()*N|0,[a,b]=[[1,0],[0,1]][Math.random()*2|0];if(i+a<N&&j+b<N)op(node(i)+a,node(j)+b);}
+  B.spinNodes=[];
+  for(const [q] of loop.map((q,i)=>[q,i]).filter(([q,i])=>q[0]%2&&q[1]%2&&i>4&&q[0]>1&&q[1]>1&&q[0]<G-2&&q[1]<G-2).sort(()=>Math.random()-.5)){
+    if(B.spinNodes.length>=3)break;if(B.spinNodes.some(([a,b])=>Math.abs(a-q[0])+Math.abs(b-q[1])<4))continue;
+    B.spinNodes.push(q);for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]])op(q[0]+a,q[1]+b);}
+  B.spinNodes=B.spinNodes.map(([a,b])=>[ox+a,oy+b]);
+  // keep the doorways and wherever the hero stands open
+  const keep=[sec.start,S.doors[B.s]&&S.doors[B.s].inner,[S.P.x,S.P.y]].filter(Boolean);
+  for(const [kx,ky] of keep)op(kx-ox,ky-oy);
+  B.mazeBlocks=[];for(let yy=1;yy<G-1;yy++)for(let xx=1;xx<G-1;xx++)if(!open.has(key(xx,yy)))B.mazeBlocks.push([ox+xx,oy+yy]);
+  const route=loop.map(([lx,ly])=>[ox+lx,oy+ly]);if(Math.random()<.5)route.reverse();
+  let bi=0,bd=1e9;route.forEach(([rx,ry],i)=>{const d=Math.hypot(rx-B.cx,ry-B.cy);if(d<bd){bd=d;bi=i;}});
+  return route.slice(bi).concat(route.slice(0,bi));
+}
+function scatterRushBlocks(B){
+  // drop the maze walls, row by row like a curtain
+  const P=S.P;
+  for(const [x,y] of B.mazeBlocks){const k=K(x,y);if(S.tile.get(k)!==0||S.feat.get(k)||Math.abs(x-P.x)+Math.abs(y-P.y)<=1||Math.hypot(x-B.cx,y-B.cy)<1)continue; // never wall the hero in
+    S.falls.push({x,y,t:-((y-S.sections[B.s].oy)*.05+Math.random()*.15),warn:.7,drop:.22,state:'warn',amida:true});}
+  tone(300,.5,'square',.04,-200);
+}
+const BULL_PHASE_BOMBS=4;
+function sproutRushBombs(B,count=BULL_PHASE_BOMBS){
+  // bombs on the loop, spread out and away from the bull
+  const n=B.path.length;let made=0;
+  for(let tries=0;tries<60&&made<count;tries++){const j=((B.pi||0)+4+Math.floor(Math.random()*Math.max(1,n-6)))%n,[x,y]=B.path[j],k=K(x,y);
+    if(S.tile.get(k)!==0||S.feat.get(k)||Math.hypot(x-B.cx,y-B.cy)<3)continue;
+    if((B.spinNodes||[]).some(([a,b])=>Math.abs(a-x)+Math.abs(b-y)<3))continue; // a spinner would steer the bull around it
+    if([...S.feat].some(([kk,f])=>f.type==='bombsw'&&Math.abs(kk%8192-x)+Math.abs(Math.floor(kk/8192)-y)<3))continue;
+    S.feat.set(k,{type:'bombsw',armed:false,grow:0});made++;}
+  if(made)tone(660,.15,'sine',.04,200);
+}
+/* high-speed spinners: a bar on a maze crossing that flips between blocking east-west and north-south */
+const SPIN_PERIOD=1.1;
+function spinCells(sp,o){return o?[[sp.x,sp.y-1],[sp.x,sp.y+1]]:[[sp.x-1,sp.y],[sp.x+1,sp.y]];}
+function setupSpinners(B){
+  B.spinners=(B.spinNodes||[]).map(([x,y],i)=>({x,y,o:Math.random()<.5?1:0,t:.4+i*.37,on:false}));
+  for(const sp of B.spinners)placeSpin(sp,sp.o);
+}
+function spinBlocked(cells,B){const P=S.P;return cells.some(([x,y])=>(x===P.x&&y===P.y)||(P.moving&&x===P.tx&&y===P.ty)||Math.hypot(x-B.cx,y-B.cy)<1.3||S.tile.get(K(x,y))!==0&&S.tile.get(K(x,y))!==4);}
+function placeSpin(sp,o){
+  for(const [x,y] of spinCells(sp,1-o))if(S.tile.get(K(x,y))===4)S.tile.set(K(x,y),0);
+  for(const [x,y] of spinCells(sp,o))S.tile.set(K(x,y),4);sp.o=o;sp.on=true;
+}
+function updSpinners(B,dt){
+  for(const sp of B.spinners||[]){sp.t-=dt;if(sp.t>0)continue;
+    const next=1-sp.o;if(spinBlocked(spinCells(sp,next),B)){sp.t=.1;continue;}
+    placeSpin(sp,next);sp.t=SPIN_PERIOD;tone(520+Math.random()*80,.06,'square',.025);burst(sp.x,sp.y,'#f0c070',4);}
+}
+function clearSpinners(B){for(const sp of B.spinners||[])for(const o of [0,1])for(const [x,y] of spinCells(sp,o))if(S.tile.get(K(x,y))===4)S.tile.set(K(x,y),0);B.spinners=[];}
+function drawSpinners(){
+  const B=S.boss;if(!B||B.type!=='amida'||!B.spinners)return;
+  for(const sp of B.spinners){const [cx,cy]=isoD(sp.x,sp.y),warn=sp.t<.35;
+    ctx.strokeStyle=warn?`rgba(255,200,90,${.5+.5*Math.sin(tNow*40)})`:'rgba(240,192,112,.7)';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(cx,cy,HW*.55,HH*.55,0,0,7);ctx.stroke();
+    ctx.save();ctx.translate(cx,cy);ctx.scale(1,.5);ctx.rotate(tNow*9);ctx.fillStyle='#b08a4a';ctx.fillRect(-12,-3,24,6);ctx.restore();
+    if(warn)for(const [x,y] of spinCells(sp,1-sp.o)){const [ax,ay]=isoD(x,y);ctx.strokeStyle='rgba(255,180,80,.8)';ctx.lineWidth=2;ctx.setLineDash([4,4]);poly2(diamond(ax,ay));ctx.setLineDash([]);}}
+}
+/* the bull's way round: along its loop, and around a spinner when one swings across */
+function bullDetour(B){
+  const n=B.path.length,sx=Math.round(B.cx),sy=Math.round(B.cy),goal=new Map();
+  for(let a=2;a<=Math.floor(n/2);a++){const j=(B.pi+a)%n,[x,y]=B.path[j];if(!goal.has(K(x,y)))goal.set(K(x,y),j);}
+  const prev=new Map([[K(sx,sy),null]]),q=[K(sx,sy)];let best=null,bestA=1e9;
+  for(let h=0;h<q.length;h++){const k=q[h];for(const m of [k+1,k-1,k+8192,k-8192]){if(prev.has(m)||S.sec.get(m)!==B.s||S.tile.get(m)!==0)continue;prev.set(m,k);
+      if(goal.has(m)){const a=(goal.get(m)-B.pi+n)%n;if(a<bestA){bestA=a;best=m;}}q.push(m);}}
+  if(best===null)return null;
+  const route=[];let c=best;while(c!==K(sx,sy)){route.unshift([c%8192,Math.floor(c/8192)]);c=prev.get(c);}B.detTo=goal.get(best);return route;
+}
+function bullNext(B){return B.det&&B.det.length?B.det[0]:B.path[(B.pi+1)%B.path.length];}
+function rushAmidaAI(B,dt){
+  updSpinners(B,dt);
+  if(B.mode==='idle'){B.t-=dt;if(B.t<=0){for(const [k,f] of [...S.feat])if(f.type==='bombsw')S.feat.delete(k);
+      B.ring=(B.ring||0)+1;B.path=rushMaze(B);scatterRushBlocks(B);B.mode='drop';B.t=1.9;B.phaseHits=0;B.det=null;bannerShow('','ブロックが降りそそぎ、迷路になった！',1.2);}}
+  else if(B.mode==='drop'){B.t-=dt;if(B.t<=0){setupSpinners(B);sproutRushBombs(B);amidaWalk(B,.8);}}
+  else if(B.mode==='walk'){
+    let rem=11*dt;while(rem>0&&B.ri<B.route.length){const [nx,ny]=B.route[B.ri],dx=nx-B.cx,dy=ny-B.cy,l=Math.hypot(dx,dy);if(l>0){B.dirx=Math.sign(dx);B.diry=Math.sign(dy);}
+      if(l<=rem){B.cx=nx;B.cy=ny;B.ri++;rem-=l;}else{B.cx+=dx/l*rem;B.cy+=dy/l*rem;rem=0;}}
+    if(B.ri>=B.route.length){B.cx=B.path[0][0];B.cy=B.path[0][1];B.pi=0;B.mode='aim';B.t=B.aimT;tone(200,.3,'sawtooth',.05,200);}}
+  else if(B.mode==='aim'){B.t-=dt;if(B.t<=0){B.mode='run';tone(90,.5,'sawtooth',.07,60);bannerShow('',`角牛が暴れ回る！ 爆弾を ${BULL_PHASE_BOMBS} 発ぶつけて止めろ`,1.8);}}
+  else if(B.mode==='run'){
+    for(const [k,f] of [...S.feat])if(f.type==='bombsw'&&f.armed&&(f.age=(f.age||0)+dt)>12){S.feat.delete(k);sproutRushBombs(B,1);const nf=[...S.feat.values()].pop();if(nf&&nf.type==='bombsw'){nf.armed=true;nf.grow=1;}burst(k%8192,Math.floor(k/8192),'#ffb03a',6);}
+    let rem=(14+.35*(B.max-B.hp))*dt,guard=0;
+    while(rem>0&&guard++<12){
+      let [tx,ty]=bullNext(B);
+      if(S.tile.get(K(tx,ty))!==0){ // a spinner swung across: find a way around, or turn back
+        const d=bullDetour(B);if(d){B.det=d;}else{B.det=null;B.path.reverse();B.pi=B.path.length-1-B.pi;}
+        [tx,ty]=bullNext(B);if(S.tile.get(K(tx,ty))!==0)break;}
+      const dx=tx-B.cx,dy=ty-B.cy,l=Math.hypot(dx,dy);if(l>0){B.dirx=Math.sign(dx);B.diry=Math.sign(dy);}
+      if(l>rem){B.cx+=dx/l*rem;B.cy+=dy/l*rem;rem=0;break;}
+      B.cx=tx;B.cy=ty;rem-=l;
+      if(B.det&&B.det.length){B.det.shift();if(!B.det.length){B.pi=B.detTo;B.det=null;}}else B.pi=(B.pi+1)%B.path.length;
+      const bk=K(tx,ty),bf=S.feat.get(bk);
+      if(bf&&bf.type==='bombsw'&&bf.armed){S.feat.delete(bk);explodeBomb(B,tx,ty);if(!S.boss||B.dying>0)return;
+        B.phaseHits=(B.phaseHits||0)+1;
+        if(B.phaseHits>=BULL_PHASE_BOMBS){B.mode='rest';B.t=2.6;bannerShow('','角牛が止まった！',1.4);return;}
+        bannerShow('',`爆弾命中！ あと ${BULL_PHASE_BOMBS-B.phaseHits} 発で止まる`,1.2);sproutRushBombs(B,1);rem=0;}}
+    if(Math.random()<dt*50)S.parts.push({x:B.cx,y:B.cy,z:3,vx:(Math.random()-.5),vy:(Math.random()-.5),vz:40,life:.4,max:.4,c:'rgba(200,190,170,.7)',r:3});}
+  else if(B.mode==='rest'){B.t-=dt;if(B.t<=0){clearAmidaBlocks();clearSpinners(B);for(const [k,f] of [...S.feat])if(f.type==='bombsw')S.feat.delete(k);B.mode='idle';B.t=.8;}}
+}
+/* shield bash (Z while guarding): scatter small enemies and bullets; the bull and the hero knock each other back */
+// the bash deals 1 damage (more with the shop item); the white guardian and a charging bull just shrug it off
+function bashDamage(B,part){
+  const n=1+(S.up.bash||0);
+  if(B.type==='ball'){for(let i=0;i<n&&S.boss&&B.dying<=0;i++){const alive=[B,...(B.clones||[])];const t=alive.includes(part)?part:alive[0];ballHit(t,'盾突進');}}
+  else if(B.type==='dice'){ // the struck die, then the nearest others, one hit each
+    const order=[part,...[B,...B.clones].filter(d=>d!==part).sort((a,b)=>Math.hypot(a.cx-part.cx,a.cy-part.cy)-Math.hypot(b.cx-part.cx,b.cy-part.cy))];
+    for(let i=0;i<n&&i<order.length&&S.boss&&B.dying<=0;i++){B.flash=0;hitDie(order[i],'盾突進');}}
+  else if(B.type==='great'){if(B.exposed>0&&B.flash<=0){damageBoss(B,'盾突進');B.exposed=0;B.shell=2;if(S.boss&&B.hp>0)sproutGreatBombs();}else bannerShow('','ガキン！ 殻が硬い',.8);}
+  else for(let i=0;i<n&&S.boss&&B.dying<=0;i++)damageBoss(B,'盾突進');
+}
+function shieldBash(dt){
+  const D=S.dash,[fx,fy]=pPos(),P=S.P;
+  S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.hypot(mx-fx,my-fy)<1){burst(mx,my,'#9fe8ff',12);tone(900,.1,'square',.05,-300);return false;}return true;});
+  const nShots=S.shots.length;S.shots=S.shots.filter(p=>Math.hypot(p.x-fx,p.y-fy)>.8);if(S.shots.length<nShots)tone(1200,.06,'square',.03);
+  const B=S.boss;if(!B||B.dying>0||D.hit.has(B))return;
+  const parts=[B,...(B.clones||[])],reach=b=>B.type==='guardian'||B.type==='great'?1.9:B.type==='amida'?1.15:B.type==='dice'?.8*diceScale(b)+.3:1;
+  const hitPart=parts.filter(b=>Math.hypot(b.cx-fx,b.cy-fy)<reach(b)).sort((a,b)=>Math.hypot(a.cx-fx,a.cy-fy)-Math.hypot(b.cx-fx,b.cy-fy))[0];
+  if(!hitPart)return;D.hit.add(B);
+  const back=[-D.dir[0],-D.dir[1]],[bx,by]=[fx+D.dir[0]*.6,fy+D.dir[1]*.6];
+  for(let i=0;i<2;i++)burst(bx,by,'#ffe98a',12);tone(140,.3,'square',.07,-40);tone(900,.12,'square',.05,-500);
+  S.dash={dir:back,left:B.type==='amida'?2:1,stop:true,kb:true,t:0,dur:.3};S.inv=Math.max(S.inv,.8);P.dir=null;P.q=null;
+  const charging=B.type==='amida'&&['charge','walk','run'].includes(B.mode);
+  if(charging){B.kbT=.9;bannerShow('','相打ち！ 角牛もはじき返した',1.1);return;}
+  if(B.type==='guardian'){bannerShow('','ガキン！ びくともしない',.8);return;}
+  bashDamage(B,hitPart);
+}
+/* ---------- dodge (Z): a quick invulnerable dash that costs stamina ---------- */
+const DODGE_COST=34,DODGE_TILES=2,DODGE_SPEED=2.6,DODGE_IFRAMES=.42,STAM_REGEN=28,STAM_DELAY=.5;
+const dodgeCost=()=>DODGE_COST-4*(S.up.roll||0),dodgeIfr=()=>DODGE_IFRAMES+.12*(S.up.roll||0);
+function dodge(){
+  if(!S||S.state!=='play'||paused||S.dash||S.pStun>0)return;
+  const bash=S.guard;const P=S.P,dir=bash?P.face:P.moving?[P.tx-P.x,P.ty-P.y]:(P.dir||P.face);
+  if(S.stam<dodgeCost()){tone(180,.12,'square',.03,-40);$('stbar').classList.add('low');return;}
+  if(!P.moving&&!isFloor(P.x+dir[0],P.y+dir[1])){tone(200,.08,'square',.03);return;} // nowhere to go
+  S.stam-=dodgeCost();S.stamCd=STAM_DELAY;S.dash={dir:[dir[0],dir[1]],left:(P.moving?DODGE_TILES-1:DODGE_TILES)+(bash?1+(S.up.bash||0):0),stop:!P.moving&&!P.dir||bash,t:0,dur:DODGE_TILES/(BASE*DODGE_SPEED*(1+.08*S.up.speed)),bash,hit:new Set()};S.dodgeT=dodgeIfr()+(bash?.15:0);
+  P.face=[dir[0],dir[1]];const [fx,fy]=pPos();burst(fx,fy,bash?'#9fe8ff':'#e8f4ff',bash?14:8);
+  if(bash){tone(220,.25,'sawtooth',.05,180);bannerShow('','盾で突進！',.6);}else tone(700,.16,'sine',.04,-500);
+}
+function updDodge(dt){
+  if(S.dodgeT>0)S.dodgeT=Math.max(0,S.dodgeT-dt);
+  if(S.stamCd>0)S.stamCd-=dt;else if(!S.dash)S.stam=Math.min(100,S.stam+STAM_REGEN*dt);
+  for(const g of S.ghosts)g.life-=dt;S.ghosts=S.ghosts.filter(g=>g.life>0);
+  if(S.pStun>0)S.pStun=Math.max(0,S.pStun-dt);
+  if(S.dash&&S.dash.bash)shieldBash(dt);
+  if(S.dash){S.dash.t+=dt;const [fx,fy]=pPos();if(Math.random()<.5)S.parts.push({x:fx,y:fy,z:4,vx:(Math.random()-.5),vy:(Math.random()-.5),vz:30,life:.3,max:.3,c:'#e8f4ff',r:2});}
+}
+document.getElementById('dodgebtn').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();dodge();});
+{const g=document.getElementById('guardbtn');g.addEventListener('pointerdown',e=>{e.preventDefault();if(S&&S.state==='play'&&!(S.pStun>0))S.guard=true;});for(const ev of ['pointerup','pointercancel','pointerleave'])g.addEventListener(ev,()=>{if(S)S.guard=false;});}
 const KEYS={ArrowUp:[0,-1],KeyW:[0,-1],ArrowRight:[1,0],KeyD:[1,0],ArrowDown:[0,1],KeyS:[0,1],ArrowLeft:[-1,0],KeyA:[-1,0]};
 addEventListener('keydown',e=>{
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'))return; // typing a name
   if(S&&S.state==='corecut'&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();S.coreCut.t=Math.max(S.coreCut.t,S.coreCut.t<5.9?5.85:7.9);return;}
   if(S&&S.radio&&!paused&&(e.code==='Space'||e.code==='Enter')){e.preventDefault();radioNext();return;}
   if(S&&S.state==='continue'){if(e.code==='Enter'||e.code==='Space'){e.preventDefault();continueStory();}else if(e.code==='Escape'){e.preventDefault();giveUpContinue();}return;}
+  if(e.code==='KeyZ'&&!e.repeat){e.preventDefault();initAudio();dodge();return;}
+  if(e.code==='KeyX'){e.preventDefault();if(S&&S.state==='play'&&!paused&&!(S.pStun>0))S.guard=true;return;}
   if(KEYS[e.code]){e.preventDefault();initAudio();queue(KEYS[e.code]);}
-  else if(/^(Digit|Numpad)[1-6]$/.test(e.code)&&S&&S.shopOpen){e.preventDefault();buy(+e.code.slice(-1)-1);}
+  else if(/^(Digit|Numpad)[1-9]$/.test(e.code)&&S&&S.shopOpen){e.preventDefault();buy(+e.code.slice(-1)-1);}
   else if((e.code==='Space'||e.code==='Enter'||e.code==='Escape')&&S&&S.state==='cut'){e.preventDefault();endCut();}
   else if(e.code==='Space'||e.code==='Enter'){const b=document.querySelector('#card .btn');if(!$('overlay').hidden&&b){e.preventDefault();b.click();}}
   else if(e.code==='KeyM')toggleMute();
   else if((e.code==='KeyP'||e.code==='Escape')&&S&&(S.state==='play'||S.state==='radio'||S.state==='intro'))togglePause();
 });
+addEventListener('keyup',e=>{if(e.code==='KeyX'&&S)S.guard=false;});
+addEventListener('blur',()=>{if(S)S.guard=false;});
 const screenDir=(dx,dy)=>dx>=0&&dy<0?[0,-1]:dx>=0?[1,0]:dy>=0?[0,1]:[-1,0];
 let ptr=null;
 cvs.addEventListener('pointerdown',e=>{initAudio();ptr={x:e.clientX,y:e.clientY};if(!S)return;const [fx,fy]=pPos(),[sx,sy]=isoP();
@@ -1945,6 +2280,9 @@ function titleScreen(hi=-1){
     <kbd>↑ / W</kbd><span>右上へ</span><kbd>→ / D</kbd><span>右下へ</span>
     <kbd>↓ / S</kbd><span>左下へ</span><kbd>← / A</kbd><span>左上へ</span>
     <kbd>タップ / スワイプ</kbd><span>主人公から見た方向へ</span>
+    <kbd>Z</kbd><span>ダッジ（前転で無敵の回避・スタミナを使う）</span>
+    <kbd>X 長押し</kbd><span>ガード（正面だけ防ぐ・押しながら方向キーで向きを変える）</span>
+    <kbd>X ＋ Z</kbd><span>盾で突進（敵を蹴散らす）</span>
   </div>
   <div class="legend">
     <i class="dot" style="background:#ff5a5a"></i><span>スイッチ：全部踏むと扉が開く</span>
@@ -2063,9 +2401,11 @@ function tryDoorAhead(){const P=S.P,d0=P.q||P.dir;if(!d0)return;const di=S.doorA
   if(di!==undefined){const d=S.doors[di];if(!d.open&&d.type==='key'&&d.hasKey)openDoor(d);}}
 function updatePlayer(dt){
   const P=S.P,[fx,fy]=pPos(),wHere=waterAt(Math.round(fx),Math.round(fy));
-  let remain=BASE*(1+.08*S.up.speed)*(S.boot>0?1.45:1)*(wHere>.06?Math.min(1,.7+.1*S.up.swim):1)*dt,guard=0;
+  let remain=BASE*(1+.08*S.up.speed)*(S.boot>0?1.45:1)*(wHere>.06?Math.min(1,.7+.1*S.up.swim):1)*dt*(S.dash?DODGE_SPEED:1),guard=0;
   while(remain>1e-6&&guard++<8){
     if(!P.moving){
+      if(S.dash){const [ax,ay]=S.dash.dir;if(S.dash.left>0&&isFloor(P.x+ax,P.y+ay)){P.dir=S.dash.dir;P.q=null;S.dash.left--;}else{if(S.dash.stop)P.dir=null;S.dash=null;remain/=DODGE_SPEED;}}
+      if(!S.dash&&(S.guard||S.pStun>0)){P.dir=null;P.q=null;break;} // planted while guarding or dizzy
       tryDoorAhead();
       if(P.q&&isFloor(P.x+P.q[0],P.y+P.q[1])){P.dir=P.q;P.q=null;}
       if(P.dir&&isFloor(P.x+P.dir[0],P.y+P.dir[1])){P.tx=P.x+P.dir[0];P.ty=P.y+P.dir[1];P.moving=true;P.p=0;P.face=P.dir;}
@@ -2079,7 +2419,7 @@ function updatePlayer(dt){
 function burst(x,y,c,n){for(let i=0;i<n;i++){const a=Math.random()*6.28;S.parts.push({x,y,z:14,vx:Math.cos(a)*1.6,vy:Math.sin(a)*1.6,vz:80+Math.random()*60,life:.6,max:.6,c,r:2.5});}}
 let warnT=0,lastTick=-1,lastSec=-1;
 function update(dt){
-  S.time+=dt;
+  S.time+=dt;updDodge(dt);
   if(S.inv>0)S.inv=Math.max(0,S.inv-dt);
   updWaves(dt);
   for(const j of S.jets)j.t-=dt;S.jets=S.jets.filter(j=>j.t>0);
@@ -2130,6 +2470,7 @@ function updParts(dt){for(const p of S.parts){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*
 /* ---------- HUD ---------- */
 let chipCache='';
 function goalText(){
+  if(S.boss&&S.boss.type==='guardian'&&S.boss.rush&&S.boss.dying<=0)return S.shieldPow?'輝く盾を構えて、レーザーを受け止めろ':'光る水の機械を踏め';
   if(S.bigCore)return'中央の巨大な水晶核に触れろ';
   if(S.escape)return S.cur>0?'崩れる迷宮を上の階へ戻れ！':'地上への階段をのぼれ！';
   if(S.great&&!S.boss)return'大番人が番人を呼んでいる…';
@@ -2147,12 +2488,15 @@ let heartCache='',shopWallet='';
 function updHud(){
   $('zone').textContent=`B${S.cur+1}F ・ ${THEMES[S.sections[S.cur].theme].name}`;$('score').textContent=S.score;
   $('o2').style.width=S.breath+'%';$('o2bar').classList.toggle('low',S.breath<40);
+  $('stam').style.width=S.stam+'%';$('stbar').classList.toggle('low',S.stam<dodgeCost());
   $('wallet').textContent=`● ${S.wallet}`;
   const hs=`${S.hearts}/${S.maxHearts}`;if(heartCache!==hs){heartCache=hs;$('hearts').innerHTML=Array.from({length:S.maxHearts},(_,i)=>`<i class="${i<S.hearts?'':'empty'}">♥</i>`).join('');}
   $('hearts').classList.toggle('hit',S.inv>0);
   if(S.shopOpen&&shopWallet!==S.wallet+'/'+S.hearts){shopWallet=S.wallet+'/'+S.hearts;renderShop();}
   const gb=$('gbar'),gl=$('glabel');
-  const bh=$('bosshp');if(S.boss){bh.hidden=false;$('bossname').textContent=S.boss.name;$('bhpfill').style.width=(Math.max(0,S.boss.hp)/S.boss.max*100)+'%';}else bh.hidden=true;
+  const bh=$('bosshp');if(S.boss){bh.hidden=false;const dice=S.boss.type==='dice';
+    $('bossname').textContent=dice?`${S.boss.name}　残り ${S.boss.dying>0?0:1+(S.boss.clones||[]).length} 個`:S.boss.name;bh.querySelector('.bhp').style.display=dice?'none':'';
+    $('bhpfill').style.width=(Math.max(0,S.boss.hp)/S.boss.max*100)+'%';}else bh.hidden=true;
   if(0){gl.textContent='水門 停止中';$('gfill').style.width='0%';gb.classList.remove('hot');gl.style.color='var(--stone)';}
   else if(!S.released){gl.textContent=`水が来るまで ${Math.ceil((1-S.charge)*CHARGE_TIME)}`;$('gfill').style.width=(S.charge*100)+'%';gb.classList.remove('flow');gb.classList.toggle('hot',S.charge>.7);gl.style.color='var(--amber)';}
   else{gl.textContent=S.ice>0?'水勢 停止中':`水勢 Lv${S.vlv}`;$('gfill').style.width=(S.surge*100)+'%';gb.classList.add('flow');gb.classList.toggle('hot',S.surge>.85);gl.style.color='var(--water)';}
@@ -2520,7 +2864,7 @@ function targets(){
   if(S.boss&&S.boss.type==='ball'){const out=[];for(const [k,f] of S.feat)if(f.type==='pitsw'&&f.cd<=0&&!f.off){const x=k%8192;out.push({x,y:(k-x)/8192,label:'柱スイッチ'});}return nearest2(out);}
   if(S.boss&&S.boss.type==='dice'){const out=[];for(const [k,f] of S.feat)if(f.type==='spearsw'&&f.cd<=0){const x=k%8192;out.push({x,y:(k-x)/8192,label:'槍スイッチ'});}return nearest2(out);}
   if(S.boss&&S.boss.type==='amida'){const out=[];for(const [k,f] of S.feat)if(f.type==='bombsw'&&!f.armed&&f.grow>=1){const x=k%8192;out.push({x,y:(k-x)/8192,label:'爆弾スイッチ'});}return out;}
-  if(S.boss){const out=[];for(const [k,f] of S.feat)if(f.type==='plate'&&f.lit){const x=k%8192;out.push({x,y:(k-x)/8192,label:'放水砲'});}return out;}
+  if(S.boss){const out=[];for(const [k,f] of S.feat)if(f.type==='plate'&&f.lit){const x=k%8192;out.push({x,y:(k-x)/8192,label:f.charger?'水の機械':'放水砲'});}return out;}
   if(d.open||(d.type==='key'&&d.hasKey))return[{x:d.x,y:d.y,label:'扉'}];
   const out=[];for(const [k,f] of S.feat){if(f.door!==d.s)continue;const x=k%8192,y=(k-x)/8192;
     if(f.type==='lever'&&!f.on)out.push({x,y,label:'レバー'});else if(f.type==='switch'&&!f.on)out.push({x,y,label:'スイッチ'});else if(f.type==='key')out.push({x,y,label:'鍵'});else if(f.type==='timer'&&!f.on)out.push({x,y,label:'タイマー'});}
@@ -2550,7 +2894,11 @@ function draw(){
       const f=S.feat.get(kk);if(f){if(f.type==='coin')drawCoin(cx,cy);else if(f.type==='switch'||f.type==='timer')drawSwitch(f,cx,cy);else if(f.type==='key')drawKey(cx,cy);else if(f.type==='plate')drawPlate(f,x,y,cx,cy);else if(f.type==='shop')drawShopFloor(cx,cy);else if(f.type==='lever')drawLever(f,cx,cy);else if(f.type==='archive')drawArchive(f.id,cx,cy);else if(f.type==='bombsw'||f.type==='gbomb')drawBombSw(f,cx,cy);else if(f.type==='cat')drawStrandedCat(cx,cy,S.sec.get(kk)||0);else if(f.type==='spearsw')drawSpearSw(f,cx,cy);else if(f.type==='pitsw')drawPitSw(f,cx,cy);else drawItem(f.type==='icrystal'?'ice':f.type,cx,cy);}
       if(S.armSet.has(kk)){ctx.strokeStyle='rgba(201,164,106,.35)';ctx.lineWidth=2;ctx.setLineDash([4,4]);poly2(diamond(cx,cy));ctx.setLineDash([]);}}
     for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;const md=m.moving?Math.max(m.x+m.y,m.tx+m.ty):m.x+m.y;if(md===k){const [mx,my]=mobPos(m),[sx,sy0]=iso(mx,my);drawMob(m,sx,sy0+dep(m.x,m.y));}}
-    if(k===pDiag&&!(S.state==='rescue'&&S.rescue.t>=1.5)&&!(S.state==='play'&&S.inv>0&&(tNow*14|0)%2)){const [sx,sy]=isoP();drawPlayer(sx,sy);}
+    if(k===pDiag&&!(S.state==='rescue'&&S.rescue.t>=1)&&!(S.state==='play'&&S.inv>0&&!S.dodgeT&&(tNow*14|0)%2)){const [sx,sy]=isoP();
+      if(S.dash&&!S.dash.kb&&!S.dash.bash){const D=S.dash,u=clamp(D.t/D.dur,0,1),sg=Math.sign(D.dir[0]-D.dir[1])||1,hop=Math.sin(u*Math.PI)*6;
+        ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(sx,sy,10,5,0,0,7);ctx.fill();
+        ctx.save();ctx.translate(sx,sy-16-hop);ctx.rotate(sg*u*Math.PI*2);ctx.translate(-sx,-(sy-16));drawPlayer(sx,sy,true);ctx.restore();}
+      else drawPlayer(sx,sy);drawGuardFx(sx,sy);}
     for(let x=xa;x<=xb;x++){const y=k-x,kk=K(x,y),t=S.tile.get(kk);if(t===undefined)continue;const [cx,cy]=isoD(x,y);
       if(t===1){drawWall(x,y,cx,cy,themeOf(x,y));if(S.rotC.has(kk))drawRotHub(x,y,cx,cy);if(mirrorOn()&&S.mirror.has(kk))drawMirror(x,y,cx,cy);}
       else if(t===4)drawArm(x,y,cx,cy);
@@ -2560,6 +2908,7 @@ function draw(){
       else if(t===0){const w=waterAt(x,y);if(w>.005)drawWater(x,y,cx,cy,w,col);if(S.frozen.has(kk))drawFrozen(cx,cy,x,y);const f=S.feat.get(kk);if(f&&f.type==='shop')drawShopCanopy(cx,cy);if(f&&w>.2)drawSurfaceMarker(f,x,y,cx,cy,w);}}
     if(S.guide&&S.escape&&guideDiag()===k)drawGuide(); // after the row's water so the kitten swims on top
     if(S.saveFx&&k===pDiag)drawSaveFx();
+    if(S.catFx&&k===pDiag)drawCatFx();
     if(S.boss){const B=S.boss,bd=(B.type==='guardian'||B.type==='great')?B.cx+B.cy+2:Math.round(B.cx)+Math.round(B.cy)+1;
       if(k===bd){const [bx,by0]=iso(B.cx,B.cy),by=by0+dep(B.hx,B.hy);if(B.type==='great')drawGreat(B,bx,by);else if(B.type==='guardian')drawBoss(B,bx,by);else if(B.type==='ball')drawBall(B,bx,by);else if(B.type==='amida')drawAmida(B,bx,by);else drawDice(B,bx,by);}
       for(const c of B.clones||[])if(k===Math.round(c.cx)+Math.round(c.cy)+1){if(B.type==='ball'){const q=iso(c.cx,c.cy);drawBall(c,q[0],q[1]+dep(B.hx,B.hy));}else drawDice(c,0,0);}}
@@ -2567,8 +2916,12 @@ function draw(){
   // boss attacks and cannon jets
   for(const r of S.rings){const [sx,sy]=isoD(r.x,r.y),fade=1-r.r/r.max;ctx.strokeStyle=`rgba(255,120,90,${.35+fade*.6})`;ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(sx,sy-4,r.r*TW/Math.SQRT2,r.r*TH/Math.SQRT2,0,0,7);ctx.stroke();
     ctx.strokeStyle=`rgba(255,220,200,${fade*.6})`;ctx.lineWidth=1.5;ctx.stroke();}
-  drawAmidaPath(S.boss);drawSpears();drawGreatShadow();drawLaser();
+  drawAmidaPath(S.boss);drawSpinners();drawSpears();drawGreatShadow();drawLaser();drawReflect();
   for(const f of S.falls){if(f.t<0||f.state==='stand')continue;const [sx,sy]=isoD(f.x,f.y);
+    if(f.amida){ // rising from below: the floor cracks and glows, then the block pushes up
+      if(f.state==='warn'){const a=clamp(f.t/f.warn,0,1);ctx.fillStyle=`rgba(90,60,30,${.2+a*.4})`;const s=.4+a*.55;poly([[sx,sy-HH*s],[sx+HW*s,sy],[sx,sy+HH*s],[sx-HW*s,sy]]);
+        ctx.strokeStyle=`rgba(240,200,120,${.4+.5*Math.sin(tNow*24)})`;ctx.lineWidth=1.6;ctx.beginPath();for(let i=0;i<3;i++){const an=hash(f.x*3+i,f.y)*6.28;ctx.moveTo(sx,sy);ctx.lineTo(sx+Math.cos(an)*HW*.6*a,sy+Math.sin(an)*HH*.6*a);}ctx.stroke();}
+      else{const a=clamp((f.t-f.warn)/f.drop,0,1);block(sx,sy,Math.max(1,WALL*a),'#b9a27a');}continue;}
     if(f.state==='warn'){const a=clamp(f.t/f.warn,0,1),bl=(tNow*10|0)%2;
       ctx.fillStyle=`rgba(0,0,0,${.15+a*.35})`;const s=.35+a*.6;poly([[sx,sy-HH*s],[sx+HW*s,sy],[sx,sy+HH*s],[sx-HW*s,sy]]);
       ctx.strokeStyle=bl?'rgba(255,90,70,.95)':'rgba(255,200,120,.7)';ctx.lineWidth=2.5;poly2(diamond(sx,sy));}
@@ -2581,7 +2934,7 @@ function draw(){
   for(const j of S.jets){const [ax,ay]=isoD(j.x0,j.y0),[bx,by]=isoD(j.x1,j.y1),a=clamp(j.t/.6,0,1);
     ctx.strokeStyle=`rgba(120,230,255,${a})`;ctx.lineWidth=10*a+2;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(ax,ay-20);ctx.quadraticCurveTo((ax+bx)/2,(ay+by)/2-90,bx,by-50);ctx.stroke();
     ctx.strokeStyle=`rgba(255,255,255,${a*.8})`;ctx.lineWidth=3*a;ctx.stroke();ctx.lineCap='butt';}
-  drawBigCore();
+  drawBigCore();drawChargerCores();
   const tg=S.state==='play'?targets():[];
   for(const t of tg)drawGoalMarker(t);
   for(const p of S.parts){const [sx,sy]=isoD(p.x,p.y);ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.beginPath();ctx.arc(sx,sy-p.z,p.r,0,7);if(p.bubble){ctx.strokeStyle=p.c;ctx.lineWidth=1.2;ctx.stroke();}else{ctx.fillStyle=p.c;ctx.fill();}}
@@ -2606,15 +2959,19 @@ function draw(){
   drawCoreCutOverlay();
 }
 function drawRescue(psx,psy){
+  // the rescue cat swoops in from the left edge, scoops the hero up at the bottom of its dive, and carries them off the top right
   ctx.setTransform(DPR,0,0,DPR,0,0);
   const t=S.rescue.t,px=W/2+(psx-camX)*SC,py=H/2+(psy-camY)*SC,hold=[px,py-74*SC];
-  const eo=u=>1-(1-u)*(1-u),ei=u=>u*u,lerp=(a,b,u)=>a+(b-a)*u;let cx,cy;
-  if(t<1.1){const u=eo(t/1.1);cx=lerp(W+90,hold[0],u);cy=lerp(-90,hold[1],u);}
-  else if(t<1.5){cx=hold[0];cy=hold[1]+Math.sin(t*12)*2;}
-  else{const u=ei(Math.min(1,(t-1.5)/1.3));cx=lerp(hold[0],hold[0]+70,u);cy=lerp(hold[1],-220,u);}
-  if(t>=1.5)drawHug(cx,cy,SC*1.15,tNow);else
-  drawCat(cx,cy,SC*1.15,tNow);
-  if(t>=1.1&&t<1.9){ctx.fillStyle='#ffe98a';ctx.font=`${Math.round(22*SC)}px "Dela Gothic One",sans-serif`;ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=5;ctx.strokeText('キャッチ！',hold[0],hold[1]-50*SC);ctx.fillText('キャッチ！',hold[0],hold[1]-50*SC);}
+  const bez=(a,c,b,u)=>[(1-u)*(1-u)*a[0]+2*(1-u)*u*c[0]+u*u*b[0],(1-u)*(1-u)*a[1]+2*(1-u)*u*c[1]+u*u*b[1]];
+  const smooth=u=>u*u*(3-2*u),A=[-120,H*.18],C1=[px-W*.28,hold[1]+70*SC],C2=[px+W*.3,hold[1]+50*SC],Bx=[W+160,-160];
+  let p,q;
+  if(t<1){const u=smooth(clamp(t,0,1))*.5+.5*clamp(t,0,1);p=bez(A,C1,hold,Math.min(1,u));q=bez(A,C1,hold,Math.min(1,u+.02));}
+  else{const u=clamp((t-1)/1.3,0,1),e=u*u;p=bez(hold,C2,Bx,e);q=bez(hold,C2,Bx,Math.min(1,e+.02));}
+  const tilt=clamp(Math.atan2(q[1]-p[1],q[0]-p[0])*.25,-.35,.35);
+  ctx.save();ctx.translate(p[0],p[1]);ctx.rotate(tilt);
+  if(t>=1)drawHug(0,0,SC*1.15,tNow);else drawCat(0,0,SC*1.15,tNow);
+  ctx.restore();
+  if(t>=.95&&t<1.25){const f=(t-.95)/.3;ctx.strokeStyle=`rgba(255,240,170,${1-f})`;ctx.lineWidth=4;ctx.beginPath();ctx.arc(hold[0],hold[1],20+f*60,0,7);ctx.stroke();}
 }
 function drawAscend(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -2809,7 +3166,7 @@ function frame(t){
     if(S.state==='play')update(dt);
     else if(S.state==='corecut')updCoreCut(dt);
     else if(S.state==='radio'){if(S.radioWait>0){S.radioWait-=dt;if(S.radioWait<=0){S.radioWait=0;tone(1400,.08,'square',.03);setTimeout(()=>tone(1400,.08,'square',.03),140);startRadio(escapeRadio(),escapeGo);}}else updRadio(dt);}
-    else if(S.state==='rescue'){S.rescue.t+=dt;if(S.released&&!S.boss){S.wt+=dt;flow();}if(S.rescue.t>=2.9){S.state='ascend';scoreEntry();}}
+    else if(S.state==='rescue'){S.rescue.t+=dt;if(S.released&&!S.boss){S.wt+=dt;flow();}if(S.rescue.t>=2.9){if(S.rescue.over){S.state='over';bannerShow('','GAME OVER',2);setTimeout(()=>{$('banner').hidden=true;bannerT=0;toTitle();},1800);}else{S.state='ascend';scoreEntry();}}}
     else if(S.state==='cut'){S.cut.t+=dt;if(S.cut.t>=CUT_END)endCut();}
     else if(S.state==='intro')updIntro(dt);
     else if(S.state==='ascend'){const z=S.rescue.zoom;S.rescue.a+=dt*(z===undefined?1:1+z*7);if(z!==undefined){S.rescue.zoom+=dt;if(S.rescue.zoom>=1.2)toTitle(S.rescue.hi);}}
