@@ -94,6 +94,10 @@ body.cine #dodgebtn{display:none!important;}
 .btn{font-family:var(--display);font-size:18px;letter-spacing:.06em;padding:12px 18px;border-radius:12px;border:0;background:var(--water);color:#06202a;cursor:pointer;}
 .btn:focus-visible{outline:3px solid var(--stone);outline-offset:3px;}
 .hint{font-size:12px;color:#9fb6bf;line-height:1.6;}
+#hourglass{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2;pointer-events:none;display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(10,22,30,.75);border:1px solid var(--line);font-weight:800;}
+#hourglass[hidden]{display:none;}#hourglass canvas{width:28px;height:40px;display:block;}#hourglass b{font-family:var(--display);font-size:22px;color:#ffe98a;min-width:1.4em;text-align:center;}#hourglass small{font-size:11px;color:#bcd;}
+#hourglass.low b{color:#ff6b5a;animation:hgp .5s infinite;}@keyframes hgp{50%{transform:scale(1.2)}}
+body.cine #hourglass{display:none!important;}
 #bigtimer{position:fixed;left:50%;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);text-align:center;z-index:2;pointer-events:none;font-family:var(--display);text-shadow:0 4px 0 rgba(0,0,0,.55);}
 #bigtimer small{display:block;font-size:15px;letter-spacing:.15em;color:var(--amber);}
 #bigtimer b{display:block;font-weight:400;font-size:88px;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums;}
@@ -210,6 +214,7 @@ button.arch-i:hover{background:rgba(214,160,255,.14);}
 <div id="cont" hidden><div class="cont-box"><div class="cont-title">CONTINUE?</div><div class="cont-sub">コンティニュー？</div><div class="cont-num" id="contnum">10</div>
 <div class="cont-btns"><button class="btn" id="contgo">コンティニュー（Enter）</button><button class="sbtn" id="contquit">あきらめる（Esc）</button></div><div class="hint" id="continfo"></div></div></div>
 <button id="mute" aria-label="音のオン・オフ（Mキー）">♪</button>
+<div id="hourglass" hidden><canvas id="hgcv" width="28" height="40"></canvas><b id="hgsec">0</b><small>門が決壊するまで</small></div>
 <div id="bigtimer" hidden><small>扉が閉まるまで</small><b id="bigsec">0</b></div>
 <div id="bosshp" hidden><span id="bossname">番人</span><div class="bhp"><i id="bhpfill"></i></div></div>
 
@@ -296,7 +301,7 @@ function genMaze(N){
   return g;
 }
 const isBoss=s=>s%5===4;
-const sizeOf=s=>isBoss(s)?7:6+Math.min(4,Math.floor(s/3));
+const sizeOf=s=>isBoss(s)?(swatFloor(s)?10:7):6+Math.min(4,Math.floor(s/3));
 const zoneOf=s=>Math.floor(s/5);
 function pickType(s){
   if(s===0)return'switch';const z=zoneOf(s),pool=['switch'];
@@ -349,7 +354,7 @@ function genSection(s){
     const c=cells.filter(c=>!used.has(c.k)&&c.dS>=3&&c.dS<=6).sort((a,b)=>a.dS-b.dS)[0];if(c){take(c);S.feat.set(c.k,{type:'ice'});}}
   if(Math.random()<.7){const a=pickArchive(zoneOf(s));if(a){const pool=cells.filter(c=>!used.has(c.k)&&c.dS>maxS*.35).sort(()=>Math.random()-.5);if(pool.length){take(pool[0]);S.feat.set(pool[0].k,{type:"archive",id:a.id});S.placedArch.add(a.id);}}}
   if(S.story&&s<STORY_LAST){const pool=cells.filter(c=>!used.has(c.k)&&c.dS>maxS*.45).sort(()=>Math.random()-.5);if(pool.length){take(pool[0]);S.feat.set(pool[0].k,{type:'cat'});}}
-  spawnMobs(s,cells,used);
+  spawnMobs(s,cells,used);spawnDogs(s,cells,used);
   for(const c of cells){if(used.has(c.k))continue;const r=Math.random();
     if(r<.02)S.feat.set(c.k,{type:'ice'});else if(r<.035)S.feat.set(c.k,{type:'boot'});else if(r<.36)S.feat.set(c.k,{type:'coin'});}
 }
@@ -483,7 +488,7 @@ const META_KEY='suibotsu-meta';
 let META={archives:[],trophies:[],stats:{rescues:0,ices:0,bossTypes:[],buys:0}};
 try{const m=JSON.parse(localStorage.getItem(META_KEY)||'null');if(m&&typeof m==='object'){META.archives=Array.isArray(m.archives)?m.archives:[];META.trophies=Array.isArray(m.trophies)?m.trophies:[];Object.assign(META.stats,m.stats||{});if(!Array.isArray(META.stats.bossTypes))META.stats.bossTypes=[];}}catch(e){}
 function saveMeta(){try{localStorage.setItem(META_KEY,JSON.stringify(META));}catch(e){}}
-const KIND={book:'本',relic:'遺物',memo:'メモ',testimony:'証言',secret:'秘録'};
+const KIND={book:'本',relic:'遺物',memo:'メモ',testimony:'証言',secret:'秘録',dog:'警備日誌',boss:'討伐記録'};
 const TIER_NAMES=['砂岩の遺跡（B1〜B5）','苔むした神殿（B6〜B10）','赤煉瓦の水路（B11〜B15）','黒曜の宮殿（B16〜B20）','白亜の回廊（B21〜）'];
 const ARCHIVES=[
   {id:'a01',tier:0,kind:'memo',title:'調査隊員のメモ その1',text:'入口の階段は思ったより長い。壁には胸の高さまで水の跡が残っている。ここは一度、すっかり水に沈んだのだ。'},
@@ -502,10 +507,26 @@ const ARCHIVES=[
   {id:'a14',tier:3,kind:'relic',title:'黒曜の首輪',text:'救助隊の紋章が彫られている。ずっと昔から、誰かを地上へ運び続けてきたらしい。'},
   {id:'a15',tier:4,kind:'book',title:'白亜の碑文',text:'かけらを核へ返す者が現れたとき、水はようやく眠りにつくだろう。'},
   {id:'a16',tier:4,kind:'memo',title:'調査隊員のメモ 最後',text:'わかった。水は私たちを襲っているのではない。かけらを、家に連れて帰りたいだけなのだ。'},
+  {id:'a17',tier:0,kind:'dog',title:'警備兵の日誌 一日目',text:'今日から遺跡の見回り当番だワン。古い水の匂いがする。隊長いわく「核に近づく者は通すな」。核ってなんだワン？'},
+  {id:'a18',tier:0,kind:'relic',title:'すり減った肉球の跡',text:'通路の石に、小さな肉球の跡が何百も重なっている。何代にもわたって、誰かがここを歩き続けてきたらしい。'},
+  {id:'a19',tier:1,kind:'dog',title:'索敵手の覚え書き',text:'人間のにおいは久しぶりだ。でもあのにおい、どこか猫のにおいも混じっている。仲間を呼ぶべきか、少し迷った。'},
+  {id:'a20',tier:1,kind:'testimony',title:'見張り台の老犬の証言',text:'わしらは王に雇われた。都が沈んだあとも、誰も「もういい」とは言わんかった。だから今も見張っておる。'},
+  {id:'a21',tier:2,kind:'memo',title:'監視カメラの設計図',text:'「核の間へ近づく影を三秒とらえたら、制圧部隊を呼ぶこと」。図の隅に小さく、猫の落書きが描かれている。'},
+  {id:'a22',tier:2,kind:'dog',title:'警備隊長の訓示',text:'持ち場を離れるな。水が来ても、天井が落ちても。……ただし、子犬と猫だけは先に逃がせ。それが我らの誇りだ。'},
+  {id:'a23',tier:3,kind:'book',title:'特殊部隊の作戦記録',text:'狙撃手は高台から、ディフェンダーは盾で。二人一組で核の間を守る。どちらかが倒れたら……残った者は、盾を捨てる覚悟で。'},
+  {id:'a24',tier:3,kind:'relic',title:'ひびの入った大盾',text:'裏に子どもの字で「とうちゃん がんばって」と彫られている。'},
+  {id:'a25',tier:4,kind:'testimony',title:'救助隊のねこの証言',text:'犬たちを恨んじゃいないよ。あいつらも、この都に置き去りにされた番人なんだ。いつか一緒に地上で日向ぼっこしたいね。'},
+  {id:'a26',tier:4,kind:'memo',title:'名もない落書き',text:'壁いっぱいに、猫と犬が並んで眠る絵。その上に一行だけ――「みずが ねむったら みんなで かえろう」'},
+  {id:'b_ball',boss:'ball',kind:'boss',title:'転がる大玉の記録',hint:'転がる大玉を倒す',text:'大玉の中は空洞だった。内側には、かつて水路の詰まりを転がり落としていた「掃除番」の銘が刻まれている。'},
+  {id:'b_dice',boss:'dice',kind:'boss',title:'気まぐれ大賽の記録',hint:'気まぐれ大賽を倒す',text:'砕けたサイコロの目は、どれも水門の番号だった。王はサイコロで、その日どの水門を開けるか決めていたらしい。'},
+  {id:'b_guardian',boss:'guardian',kind:'boss',title:'白亜の番人の記録',hint:'白亜の番人を倒す',text:'番人の額の奥に、青いかけらがはめこまれていた。レーザーの光は、核のかけらが泣く光だったのかもしれない。'},
+  {id:'b_amida',boss:'amida',kind:'boss',title:'あみだ角牛の記録',hint:'あみだ角牛を倒す',text:'角牛の鉄の鎧には、迷路の道順がびっしり彫られていた。道に迷った子どもを、背に乗せて出口まで運んでいたという。'},
+  {id:'b_swat',boss:'swat',kind:'boss',title:'犬の特殊部隊の記録',hint:'犬の特殊部隊を倒す',text:'倒れた二匹は、互いの名を呼んでいた。部隊章の裏には「どちらかが倒れたら、残った方が守れ」。'},
+  {id:'b_great',boss:'great',kind:'boss',title:'大番人の記録',hint:'大番人ガーディアンを倒す',text:'大番人は、核を守るために生まれた水の影だった。最後に崩れるとき、その影はほっとしたように見えた。'},
   {id:'s1',secret:true,minZone:0,kind:'secret',title:'ねこ救助隊の日誌',hint:'猫に3回救われる',check:()=>META.stats.rescues>=3,text:'今日もフードの子を運んだ。これで三度目だ。あの子は懲りずに、また潜っていく。かけらに選ばれた者は、みんなそうだ。'},
   {id:'s2',secret:true,minZone:1,kind:'secret',title:'凍った手紙',hint:'氷結晶を累計10個拾う',check:()=>META.stats.ices>=10,text:'もしこの手紙が凍っているなら、あなたはもうかけらを使いこなしている。どうか、核のもとへ。'},
   {id:'s3',secret:true,minZone:3,kind:'secret',title:'番人の涙',hint:'4種類の番人をすべて倒す',check:()=>META.stats.bossTypes.length>=4,text:'番人たちは核を守っていたのではない。核が泣くのを、止めてやりたかったのだ。'},
-  {id:'s4',secret:true,minZone:2,kind:'secret',title:'王の告白',hint:'通常のアーカイブを16個すべて集める',check:()=>ARCHIVES.filter(a=>!a.secret).every(a=>META.archives.includes(a.id)),text:'かけらを削らせたのは私だ。あの子のフードに猫の耳を縫いつけたのも私だ。いつか誰かが、私の代わりに返しに行けるように。'},
+  {id:'s4',secret:true,minZone:2,kind:'secret',title:'王の告白',hint:'通常のアーカイブをすべて集める',check:()=>ARCHIVES.filter(a=>!a.secret&&!a.boss).every(a=>META.archives.includes(a.id)),text:'かけらを削らせたのは私だ。あの子のフードに猫の耳を縫いつけたのも私だ。いつか誰かが、私の代わりに返しに行けるように。'},
 ];
 const TROPHIES=[
   {id:'b2',name:'はじめの一段',desc:'地下2階に到達する'},
@@ -547,13 +568,13 @@ function archiveCollect(id){if(S&&S.testMode)return;
   if(META.archives.includes(id))return;const a=ARCHIVES.find(x=>x.id===id);META.archives.push(id);saveMeta();
   toast('アーカイブ獲得',a.title);tone(660,.1,'sine',.05);setTimeout(()=>tone(990,.18,'sine',.05),100);
   const n=META.archives.length;if(n>=5)trophy('arch5');if(a.secret)trophy('arch_secret');
-  if(ARCHIVES.filter(x=>!x.secret).every(x=>META.archives.includes(x.id)))trophy('arch_all');
+  if(ARCHIVES.filter(x=>!x.secret&&!x.boss).every(x=>META.archives.includes(x.id)))trophy('arch_all');
 }
 function pickArchive(zone){
   const placed=S.placedArch;
   const sec=ARCHIVES.find(a=>a.secret&&zone>=a.minZone&&!META.archives.includes(a.id)&&!placed.has(a.id)&&a.check());
   if(sec)return sec;
-  const tier=Math.min(zone,4);return ARCHIVES.find(a=>!a.secret&&a.tier===tier&&!META.archives.includes(a.id)&&!placed.has(a.id));
+  const tier=Math.min(zone,4);return ARCHIVES.find(a=>!a.secret&&!a.boss&&a.tier===tier&&!META.archives.includes(a.id)&&!placed.has(a.id));
 }
 function drawArchive(id,cx,cy){
   const a=ARCHIVES.find(x=>x.id===id),y=cy-24+Math.sin(tNow*2.4+cx)*3;
@@ -569,12 +590,14 @@ function archiveScreen(back,all=false){
   const got=all?new Set(ARCHIVES.map(a=>a.id)):new Set(META.archives),total=ARCHIVES.length; // all: test-menu peek, saves nothing
   const rows=[];
   TIER_NAMES.forEach((nm,ti)=>{rows.push(`<div class="arch-h">${nm}</div>`);
-    for(const a of ARCHIVES.filter(x=>!x.secret&&x.tier===ti))rows.push(got.has(a.id)?`<button class="arch-i" data-id="${a.id}"><span class="k">${KIND[a.kind]}</span>${esc(a.title)}</button>`:`<div class="arch-i lock"><span class="k">？</span>？？？</div>`);});
+    for(const a of ARCHIVES.filter(x=>!x.secret&&!x.boss&&x.tier===ti))rows.push(got.has(a.id)?`<button class="arch-i" data-id="${a.id}"><span class="k">${KIND[a.kind]}</span>${esc(a.title)}</button>`:`<div class="arch-i lock"><span class="k">？</span>？？？</div>`);});
+  rows.push(`<div class="arch-h">討伐記録</div>`);
+  for(const a of ARCHIVES.filter(x=>x.boss))rows.push(got.has(a.id)?`<button class="arch-i" data-id="${a.id}"><span class="k">${KIND[a.kind]}</span>${esc(a.title)}</button>`:`<div class="arch-i lock"><span class="k">？</span>？？？ <small>条件：${esc(a.hint)}</small></div>`);
   rows.push(`<div class="arch-h">秘録</div>`);
   for(const a of ARCHIVES.filter(x=>x.secret))rows.push(got.has(a.id)?`<button class="arch-i sec" data-id="${a.id}"><span class="k">${KIND[a.kind]}</span>${esc(a.title)}</button>`:`<div class="arch-i lock"><span class="k">？</span>？？？ <small>条件：${esc(a.hint)}</small></div>`);
   show(`<h2>アーカイブ${all?'（全閲覧）':''}</h2><p class="hint">${all?'テスト用にすべての記録を表示中（収集状況は変わりません）。':''}集めた記録 ${all?META.archives.length:got.size} / ${total}。深く潜るほど、都の真相に近い記録が見つかる。</p><div class="arch-list">${rows.join('')}</div><button class="btn" id="archback">もどる</button>`);
   document.querySelectorAll('.arch-i[data-id]').forEach(b=>b.onclick=()=>{const a=ARCHIVES.find(x=>x.id===b.dataset.id);
-    show(`<p class="hint">${KIND[a.kind]}${a.secret?'':' ・ '+TIER_NAMES[a.tier]}</p><h2>${esc(a.title)}</h2><p class="arch-text">${esc(a.text)}</p><button class="btn" id="archback">一覧へ</button>`);$('archback').onclick=()=>archiveScreen(back,all);});
+    show(`<p class="hint">${KIND[a.kind]}${a.secret||a.boss?'':' ・ '+TIER_NAMES[a.tier]}</p><h2>${esc(a.title)}</h2><p class="arch-text">${esc(a.text)}</p><button class="btn" id="archback">一覧へ</button>`);$('archback').onclick=()=>archiveScreen(back,all);});
   $('archback').onclick=back;
 }
 function trophyScreen(back){
@@ -593,6 +616,486 @@ function breakDoor(d){
   burst(d.x,d.y,'#8a96a2',18);burst(d.x,d.y,'#8fe3f5',18);tone(70,.6,'sawtooth',.08,-30);tone(140,.4,'square',.06,-90);
   bannerShow('','扉が水圧で壊れた！',1.6);S.pressureT=12;
 }
+/* ---------- the floor gate: clearing a floor shuts the gate behind you; an hourglass runs, then it bursts ---------- */
+const GATE_TIME=15;
+function closeGate(d){
+  d.open=false;d.perm=false;d.holding=true;d.hourglass=GATE_TIME;d.wet=false;S.tile.set(K(d.x,d.y),2);
+  tone(180,.3,'square',.06,-60);setTimeout(()=>tone(420,.25,'triangle',.04,200),150);
+  setTimeout(()=>{if(S&&S.state==='play'&&d.holding)bannerShow('門が水をせき止めた','水が届くと砂時計が落ち始め、落ちきると決壊する',2);},1300);
+}
+function updGateHud(){
+  const g=S.doors[S.cur-1],el=$('hourglass');
+  if(S.state==='play'&&g&&g.holding&&g.hourglass!=null&&g.wet){el.hidden=false;$('hgsec').textContent=Math.ceil(g.hourglass);el.classList.toggle('low',g.hourglass<4);
+    drawHourglass(g.hourglass/GATE_TIME);}
+  else el.hidden=true;
+}
+/* ---------- 犬の警備兵: patrols the corridors; spots you down a straight line, barks, and gives chase ---------- */
+/* ---------- the collapse: the dog force panics and runs for the surface; the slow ones are swallowed ---------- */
+function escapeMob(m,dt){
+  if(m.gone||m.type==='camera'||m.type==='turret')return;
+  if(!S.gD||(S.mobFieldT=(S.mobFieldT||0)-dt)<=0){if(!S.guide||!S.gD)guideField();S.mobFieldT=1;}
+  m.escSpd=m.escSpd||(1.6+Math.random()*2.2);m.alertT=0;m.mode=null;m.aim=0;
+  if(DOG_KINDS.has(m.type)){const [fx,fy]=pPos();dogChatter(m,dt,fx,fy,true);}
+  let rem=m.escSpd*dt,g=0;
+  while(rem>1e-6&&g++<6){
+    if(!m.moving){const n=guideDown(K(m.x,m.y));if(n===null){if(S.gD.get(K(m.x,m.y))===0)m.gone=true;break;} // at the stairs: escaped
+      const nx=n%8192,ny=Math.floor(n/8192);if(heroAt(nx,ny))break;m.dir=[nx-m.x,ny-m.y];m.tx=nx;m.ty=ny;m.moving=true;m.p=0;}
+    const st=Math.min(rem,1-m.p);m.p+=st;rem-=st;if(m.p>=1-1e-6){m.x=m.tx;m.y=m.ty;m.moving=false;m.p=0;const s=S.sec.get(K(m.x,m.y));if(s!==undefined)m.s=s;}}
+}
+function swallowMob(m,mx,my){
+  m.gone=true;(S.mobFalls||(S.mobFalls=[])).push({m,x:mx,y:my,t:0});
+  burst(mx,my,'#8a7a62',8);tone(900,.25,'sine',.04,-700);
+  if(DOG_KINDS.has(m.type)&&!(S.swallowMsgT>0)){S.swallowMsgT=6;bannerShow('',`${DOG_NAME[m.type]||'敵'}が穴に飲まれた…`,1);}
+}
+function updMobFalls(dt){
+  if(S.swallowMsgT>0)S.swallowMsgT-=dt;
+  for(const f of S.mobFalls||[])f.t+=dt;if(S.mobFalls)S.mobFalls=S.mobFalls.filter(f=>f.t<1.2);
+}
+function drawMobFalls(){
+  for(const f of S.mobFalls||[]){if(!DOG_KINDS.has(f.m.type))continue;const [sx,sy]=isoD(f.x,f.y),u=f.t/1.2;
+    ctx.save();ctx.globalAlpha=1-u;ctx.translate(sx,sy+u*u*60);ctx.rotate(u*4);ctx.scale(1-u*.6,1-u*.6);drawDog({...f.m,moving:false,alertT:0,barkT:0,mode:null},0,0);ctx.restore();}
+}
+/* ---------- what the dogs say: idle chatter on patrol, and panic during the collapse ---------- */
+const DOG_LINES={
+  dog:['異常なし、ワン','今日も見回りだワン','水の音がするワン…','眠いワン…','ここは通さないワン','おやつまだかなぁ'],
+  captain:['隊長の目はごまかせんぞ','部下ども、気を抜くな！','突撃の準備はできている','怪しい足音がするな…'],
+  scout:['くんくん…におうワン','こっちから人のにおい…','見つけたら仲間を呼ぶワン','鼻だけは自信があるワン'],
+  squad:['制圧部隊、配置完了','目標を捜索中…','武器の点検よし','異常があれば即制圧だ'],
+  sniper:['照準よし…','風を読め…'],defender:['ここは通さん','盾は重いが頼れる']};
+const DOG_FLEE={
+  dog:['崩れるワン！','逃げろーっ！','持ち場どころじゃないワン！','おかあさーん！','ひえええ！'],
+  captain:['全員退避ーっ！','隊長命令だ、逃げろ！','うおお、足場が！'],
+  scout:['出口はこっちワン！','鼻がきかないワン～！','においより命だワン！'],
+  squad:['撤退！撤退！','作戦中止ーっ！','装備は捨てていけ！'],
+  sniper:['高台どころじゃない！'],defender:['盾なんて持ってられるか！']};
+function dogChatter(m,dt,fx,fy,flee){
+  if(m.sayT>0)m.sayT-=dt;
+  if((m.talkT=(m.talkT??(1+Math.random()*6))-dt)>0)return;
+  m.talkT=flee?2.5+Math.random()*3:7+Math.random()*9;
+  if(Math.hypot(fx-m.x,fy-m.y)>10)return; // only within earshot
+  if(!flee&&(m.alertT>0||m.mode||m.dizzyT>0))return; // busy
+  const pool=(flee?DOG_FLEE:DOG_LINES)[m.type]||(flee?DOG_FLEE.dog:DOG_LINES.dog);
+  m.say=pool[Math.random()*pool.length|0];m.sayT=flee?1.6:2.4;
+}
+function dogSay(txt,cx,top,urgent){
+  ctx.font='800 11px "M PLUS Rounded 1c",sans-serif';const w=ctx.measureText(txt).width+12,h=17,x=cx-w/2,y=top-h-4;
+  ctx.fillStyle=urgent?'rgba(255,235,225,.95)':'rgba(255,255,255,.92)';ctx.strokeStyle=urgent?'#d2382a':'rgba(40,40,50,.6)';ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.roundRect(x,y,w,h,6);ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx-4,y+h);ctx.lineTo(cx,y+h+5);ctx.lineTo(cx+4,y+h);ctx.fill();
+  ctx.fillStyle=urgent?'#b8281a':'#2a2430';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,cx,y+h/2+1);ctx.textBaseline='alphabetic';
+}
+function dogSees(m,fx,fy,range=6){
+  const dx=Math.round(fx)-m.x,dy=Math.round(fy)-m.y;if(dx&&dy)return false;const n=Math.abs(dx+dy);if(n>range)return false;
+  const sx=Math.sign(dx),sy=Math.sign(dy);for(let i=1;i<n;i++)if(!isFloor(m.x+sx*i,m.y+sy*i))return false;return true;
+}
+function dogStep(m,fx,fy,cap=400){ // next tile towards the hero over open floor in this section
+  const goal=K(Math.round(fx),Math.round(fy)),st=K(m.x,m.y),prev=new Map([[st,null]]),q=[st];
+  for(let h=0;h<q.length&&h<cap;h++){const k=q[h];if(k===goal)break;for(const n of [k+1,k-1,k+8192,k-8192]){if(prev.has(n)||!isFloor(n%8192,Math.floor(n/8192))||S.sec.get(n)!==m.s||S.doorAt.has(n))continue;prev.set(n,k);q.push(n);}}
+  if(!prev.has(goal))return null;let c=goal;while(prev.get(c)!==st&&prev.get(c)!=null)c=prev.get(c);return [c%8192-m.x,Math.floor(c/8192)-m.y];
+}
+function dogAI(m,dt,fx,fy){
+  if(m.alertT>0)m.alertT-=dt;
+  if(dogSees(m,fx,fy)&&!(m.fleeT>0)){if(!(m.alertT>0)){tone(520,.08,'square',.05);setTimeout(()=>tone(470,.1,'square',.05),110);m.barkT=.8;}m.alertT=4;}
+  if(m.barkT>0)m.barkT-=dt;
+  const chasing=m.alertT>0&&!(m.fleeT>0);let rem=(chasing?3.4:1.6)*dt,g=0;
+  while(rem>1e-6&&g++<6){
+    if(!m.moving){
+      let pick=null;
+      if(chasing)pick=dogStep(m,fx,fy);
+      if(!pick){const opts=DIRS.filter(([dx,dy])=>{const k=K(m.x+dx,m.y+dy);return isFloor(m.x+dx,m.y+dy)&&S.sec.get(k)===m.s&&!S.doorAt.has(k)&&!S.armSet.has(k);});
+        let ch=opts.filter(d=>!(m.dir&&d[0]===-m.dir[0]&&d[1]===-m.dir[1]));if(!ch.length)ch=opts;if(!ch.length)break;
+        if(m.fleeT>0)ch.sort((a,b)=>Math.hypot(fx-m.x-b[0],fy-m.y-b[1])-Math.hypot(fx-m.x-a[0],fy-m.y-a[1]));
+        pick=m.fleeT>0?ch[0]:(m.dir&&ch.some(d=>d[0]===m.dir[0]&&d[1]===m.dir[1])&&Math.random()<.7?m.dir:ch[Math.random()*ch.length|0]);}
+      m.dir=pick;if(heroAt(m.x+pick[0],m.y+pick[1]))break;m.tx=m.x+pick[0];m.ty=m.y+pick[1];m.moving=true;m.p=0;}
+    const st=Math.min(rem,1-m.p);m.p+=st;rem-=st;if(m.p>=1-1e-6){m.x=m.tx;m.y=m.ty;m.moving=false;m.p=0;}}
+}
+function spawnDogs(s,cells,used){
+  if(isBoss(s)||s<2||(S.story&&s>STORY_LAST))return;
+  const n=Math.min(4,1+Math.floor(s/5)),pool=cells.filter(c=>!used.has(c.k)&&c.dS>7).sort(()=>Math.random()-.5);
+  for(let i=0;i<n&&i<pool.length;i++){const c=pool[i];used.add(c.k);S.mobs.push({type:'dog',x:c.x,y:c.y,tx:c.x,ty:c.y,p:0,moving:false,dir:null,s,bob:Math.random()*6,alertT:0});}
+  const add=(type,count,extra={})=>{for(let i=0;i<count;i++){const c=pool.find(q=>!used.has(q.k));if(!c)return;used.add(c.k);S.mobs.push({type,x:c.x,y:c.y,tx:c.x,ty:c.y,p:0,moving:false,dir:null,s,bob:Math.random()*6,alertT:0,...extra});}};
+  if(s>=5)add('captain',s>=10?2:1,{hp:2});
+  if(s>=11)add('turret',s>=19?2:1,{hp:2,spot:0,cd:1});  // タレット from B12           // 犬の警備隊長 from B6
+  if(s>=7)add('scout',1);                      // 犬の索敵手: exactly one per floor from B8
+  if(s>=8)add('camera',s>=15?2:1,{di:Math.random()*4|0,t:2.6,spot:0}); // 監視カメラ from B9
+  if(s>=15)add('squad',1,{hp:3});             // 犬の制圧部隊 from B16 (cameras call more)
+}
+/* ---------- the dog security force: captain, scout, suppression squad, and surveillance cameras ---------- */
+const DOG_KINDS=new Set(['dog','captain','scout','squad']);
+const DOG_NAME={sniper:'狙撃手',defender:'ディフェンダー',dog:'犬の警備兵',captain:'犬の警備隊長',scout:'犬の索敵手',squad:'犬の制圧部隊'};
+function patrolPick(m,fx,fy){
+  const opts=DIRS.filter(([dx,dy])=>{const k=K(m.x+dx,m.y+dy);return isFloor(m.x+dx,m.y+dy)&&S.sec.get(k)===m.s&&!S.doorAt.has(k)&&!S.armSet.has(k);});
+  let ch=opts.filter(d=>!(m.dir&&d[0]===-m.dir[0]&&d[1]===-m.dir[1]));if(!ch.length)ch=opts;if(!ch.length)return null;
+  if(m.fleeT>0){ch.sort((a,b)=>Math.hypot(fx-m.x-b[0],fy-m.y-b[1])-Math.hypot(fx-m.x-a[0],fy-m.y-a[1]));return ch[0];}
+  return m.dir&&ch.some(d=>d[0]===m.dir[0]&&d[1]===m.dir[1])&&Math.random()<.7?m.dir:ch[Math.random()*ch.length|0];
+}
+const heroAt=(x,y)=>{const P=S.P;return (x===P.x&&y===P.y)||(P.moving&&x===P.tx&&y===P.ty);};
+function moveMob(m,dt,spd,choose){
+  let rem=spd*dt,g=0;
+  while(rem>1e-6&&g++<8){
+    if(!m.moving){const pick=choose();if(!pick)break;m.dir=pick;if(heroAt(m.x+pick[0],m.y+pick[1]))break;m.tx=m.x+pick[0];m.ty=m.y+pick[1];m.moving=true;m.p=0;}
+    const st=Math.min(rem,1-m.p);m.p+=st;rem-=st;if(m.p>=1-1e-6){m.x=m.tx;m.y=m.ty;m.moving=false;m.p=0;}}
+}
+function alertPack(src,radius){
+  for(const o of S.mobs)if(o!==src&&o.s===src.s&&DOG_KINDS.has(o.type)&&o.type!=='scout'&&Math.hypot(o.x-src.x,o.y-src.y)<=radius){o.alertT=Math.max(o.alertT||0,7);o.called=1.2;}
+}
+// 犬の警備隊長: winds up, then charges flat out down the line it spotted you on
+function captainAI(m,dt,fx,fy){
+  if(m.dizzyT>0){m.dizzyT-=dt;return;}
+  if(m.alertT>0)m.alertT-=dt;
+  if(m.mode==='windup'){m.t-=dt;if(m.t<=0){m.mode='charge';tone(110,.4,'sawtooth',.06,80);}return;}
+  if(m.mode==='charge'){
+    let rem=9.5*dt;while(rem>1e-6){
+      if(!m.moving){const [dx,dy]=m.dir;if(!isFloor(m.x+dx,m.y+dy)||S.sec.get(K(m.x+dx,m.y+dy))!==m.s||S.doorAt.has(K(m.x+dx,m.y+dy))){m.mode='tired';m.t=1.3;burst(m.x+dx*.5,m.y+dy*.5,'#c9b285',8);tone(90,.2,'square',.05,-30);return;}
+        if(heroAt(m.x+dx,m.y+dy)){m.mode='tired';m.t=1.3;m.ram=.4;return;}
+        m.tx=m.x+dx;m.ty=m.y+dy;m.moving=true;m.p=0;}
+      const st=Math.min(rem,1-m.p);m.p+=st;rem-=st;if(m.p>=1-1e-6){m.x=m.tx;m.y=m.ty;m.moving=false;m.p=0;}}
+    if(Math.random()<dt*30){const [mx,my]=mobPos(m);S.parts.push({x:mx,y:my,z:3,vx:(Math.random()-.5),vy:(Math.random()-.5),vz:30,life:.3,max:.3,c:'rgba(200,190,170,.7)',r:2.5});}
+    return;}
+  if(m.mode==='tired'){m.t-=dt;if(m.t<=0)m.mode=null;return;}
+  if(!m.moving&&dogSees(m,fx,fy,7)&&!(m.fleeT>0)){ // spotted: face the hero and wind up
+    m.dir=[Math.sign(Math.round(fx)-m.x),Math.sign(Math.round(fy)-m.y)];m.mode='windup';m.t=.55;m.alertT=6;tone(200,.3,'sawtooth',.05,-80);return;}
+  moveMob(m,dt,m.alertT>0?2.6:1.6,()=>(m.alertT>0&&!(m.fleeT>0)&&dogStep(m,fx,fy))||patrolPick(m,fx,fy));
+}
+// 犬の索敵手: one per floor; always closing in; howls for backup the moment it sees you
+function scoutAI(m,dt,fx,fy){
+  if(m.howlCd>0)m.howlCd-=dt;if(m.barkT>0)m.barkT-=dt;
+  if(dogSees(m,fx,fy,6)&&!(m.howlCd>0)){m.howlCd=7;m.barkT=1.4;m.alertT=7;alertPack(m,12);
+    tone(330,.5,'sine',.06,260);setTimeout(()=>tone(500,.7,'sine',.05,-180),350);bannerShow('','犬の索敵手が仲間を呼んだ！',1.3);}
+  if(!m.moving&&(m.pathCd=(m.pathCd||0)-dt)<=0){m.pathCd=.25;m.next=dogStep(m,fx,fy,4000);} // the scout always knows the way to you
+  moveMob(m,dt,m.fleeT>0?2.6:2.1,()=>{const n=!(m.fleeT>0)&&(m.next||dogStep(m,fx,fy,4000));m.next=null;return n||patrolPick(m,fx,fy);});
+}
+// 犬の制圧部隊: a bit faster, takes three hits, and fires at you down straight lines
+function squadAI(m,dt,fx,fy){
+  if(m.flash>0)m.flash-=dt;if(m.alertT>0)m.alertT-=dt;if(m.fireCd>0)m.fireCd-=dt;
+  if(dogSees(m,fx,fy,7)){m.alertT=6;
+    if(!(m.fireCd>0)&&!m.moving){const dx=Math.sign(Math.round(fx)-m.x),dy=Math.sign(Math.round(fy)-m.y);m.dir=[dx,dy];m.fireCd=1.8;m.aimT=.35;}}
+  if(m.aimT>0){m.aimT-=dt;if(m.aimT<=0){const [dx,dy]=m.dir;S.shots.push({x:m.x+dx*.6,y:m.y+dy*.6,vx:dx*5.2,vy:dy*5.2,life:4,dog:true});tone(760,.08,'square',.04,-200);}return;}
+  moveMob(m,dt,m.alertT>0?3.1:2.2,()=>(m.alertT>0&&!(m.fleeT>0)&&dogStep(m,fx,fy))||patrolPick(m,fx,fy));
+}
+function mobHit(m,fromX,fromY){ // returns true when the enemy is knocked out
+  if(m.type==='camera')return false;
+  if((m.hp||1)>1){m.hp--;m.flash=.4;m.alertT=6;const [mx,my]=mobPos(m);burst(mx,my,'#ffe98a',8);tone(400,.1,'square',.05,-120);
+    if(m.mode==='charge'||m.mode==='windup'){m.mode=null;m.dizzyT=.8;}
+    if(fromX!==undefined)shoveMob(m,fromX,fromY,2);return false;}
+  return true;
+}
+function shoveMob(m,fx,fy,n){
+  // push the enemy straight away from the blow, as far as the floor allows
+  if(m.type==='turret'||m.type==='camera')return;const [mx,my]=mobPos(m);let dx=mx-fx,dy=my-fy;const d=Math.abs(dx)>=Math.abs(dy)?[Math.sign(dx)||1,0]:[0,Math.sign(dy)||1];
+  let x=Math.round(mx),y=Math.round(my);for(let i=0;i<n;i++){const nx=x+d[0],ny=y+d[1],k=K(nx,ny);if(!isFloor(nx,ny)||S.sec.get(k)!==m.s||S.doorAt.has(k))break;x=nx;y=ny;}
+  m.x=m.tx=x;m.y=m.ty=y;m.moving=false;m.p=0;burst(x,y,'#c9b285',6);
+}
+/* 監視カメラの罠: sweeps its view between directions; hold the hero in view too long and a squad is sent in */
+function camCells(m){
+  const [dx,dy]=DIRS[m.di],out=[];
+  for(let a=1;a<=5;a++)for(let b=-Math.floor((a+1)/2);b<=Math.floor((a+1)/2);b++){const x=m.x+dx*a-dy*b,y=m.y+dy*a+dx*b;
+    if(!isFloor(x,y)||S.sec.get(K(x,y))!==m.s)continue;
+    let clear=true;const n=Math.max(Math.abs(x-m.x),Math.abs(y-m.y));for(let i=1;i<n;i++){const ix=Math.round(m.x+(x-m.x)*i/n),iy=Math.round(m.y+(y-m.y)*i/n);if(!isFloor(ix,iy)){clear=false;break;}}
+    if(clear)out.push([x,y]);}
+  return out;
+}
+function cameraAI(m,dt,fx,fy){
+  if(m.cd>0)m.cd-=dt;
+  if(!m.seenNow)m.t-=dt; // holds its gaze while it has you in viewif(m.t<=0){m.di=(m.di+1)%4;let tries=0;while(camCells(m).length<3&&tries++<4)m.di=(m.di+1)%4;m.t=2.6;m.cells=camCells(m);}
+  if(!m.cells)m.cells=camCells(m);
+  const px=Math.round(fx),py=Math.round(fy),seen=S.state==='play'&&m.cells.some(([x,y])=>x===px&&y===py);
+  m.spot=seen?m.spot+dt:Math.max(0,m.spot-dt*.7);m.seenNow=seen;
+  if(seen&&m.spot>.1&&!(m.beep>0)){tone(1400,.05,'square',.03);m.beep=.3;}if(m.beep>0)m.beep-=dt;
+  if(m.spot>=1.6&&!(m.cd>0)){m.spot=0;m.cd=9;callSquad(m,px,py);}
+}
+function callSquad(cam,px,py){
+  // a suppression squad drops in a few tiles from the hero, out of the way of walls
+  const cand=[];for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){const x=px+dx,y=py+dy,d=Math.abs(dx)+Math.abs(dy);
+    if(d<3||d>5||!isFloor(x,y)||S.sec.get(K(x,y))!==cam.s||S.doorAt.has(K(x,y)))continue;cand.push([x,y]);}
+  const [x,y]=cand[Math.random()*cand.length|0]||[cam.x,cam.y];
+  S.mobs.push({type:'squad',x,y,tx:x,ty:y,p:0,moving:false,dir:null,s:cam.s,bob:Math.random()*6,alertT:8,hp:3,fireCd:1.2});
+  burst(x,y,'#ff5a4a',16);tone(880,.15,'square',.05);setTimeout(()=>tone(660,.15,'square',.05),160);setTimeout(()=>tone(880,.15,'square',.05),320);
+  bannerShow('監視カメラに見つかった！','犬の制圧部隊が来るぞ',1.6);
+}
+function drawCameraCones(){
+  for(const m of S.mobs){if(m.type!=='camera'||m.s!==S.cur||!m.cells)continue;const hot=m.spot>0;
+    ctx.fillStyle=hot?`rgba(255,70,60,${.18+.25*Math.min(1,m.spot/1.6)})`:'rgba(255,90,80,.12)';
+    for(const [x,y] of m.cells){const [cx,cy]=isoD(x,y);poly(diamond(cx,cy));}}
+}
+function drawCamera(m,cx,cy){
+  const [dx,dy]=DIRS[m.di],sx=(dx-dy)*.7,sy=(dx+dy)*.35;
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(cx,cy,8,4,0,0,7);ctx.fill();
+  ctx.fillStyle='#5a6470';ctx.fillRect(cx-2,cy-30,4,30);
+  ctx.save();ctx.translate(cx,cy-32);ctx.fillStyle='#d8dde2';ctx.beginPath();ctx.ellipse(0,0,9,6,Math.atan2(sy,sx),0,7);ctx.fill();
+  ctx.fillStyle='#1a1d22';ctx.beginPath();ctx.arc(sx*9,sy*9,3.5,0,7);ctx.fill();
+  const on=(tNow*2|0)%2||m.spot>0;ctx.fillStyle=on?'#ff3a2a':'#5a1a1a';ctx.beginPath();ctx.arc(-sx*4,-6,2,0,7);ctx.fill();ctx.restore();
+  if(m.spot>0){const f=Math.min(1,m.spot/1.6);ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(cx-14,cy-50,28,5);ctx.fillStyle='#ff4a3a';ctx.fillRect(cx-14,cy-50,28*f,5);}
+}
+// one sprite for the whole dog force, dressed by rank
+const DOG_LOOK={dog:{fur:'#c9955a',dark:'#8a5a32',vest:'#2f5fa8',cap:'#2f5fa8',sc:1},captain:{fur:'#8a6a4a',dark:'#4a3020',vest:'#a8322f',cap:'#a8322f',sc:1.25},
+  scout:{fur:'#d8c8a8',dark:'#9a8a6a',vest:'#3a8a5a',cap:'#3a8a5a',sc:.9},sniper:{fur:'#7a6a50',dark:'#4a3a28',vest:'#4a5a3a',cap:'#4a5a3a',sc:1.05},defender:{fur:'#5a5a62',dark:'#2a2a32',vest:'#1a2a4a',cap:'#1a2a4a',sc:1.65},squad:{fur:'#6a6a72',dark:'#3a3a42',vest:'#2a2a30',cap:'#2a2a30',sc:1.1}};
+function drawDog(m,cx,cy){
+  const L=DOG_LOOK[m.type]||DOG_LOOK.dog,fast=m.alertT>0||m.mode==='charge',run=m.moving?Math.sin(tNow*(m.mode==='charge'?36:fast?26:14)+m.bob):0,f=m.dir||[1,0],sx=(f[0]-f[1])>=0?1:-1;
+  const shake=m.mode==='windup'?Math.sin(tNow*60)*2:0,y=cy-4-Math.abs(run)*2;
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(cx,cy,15*L.sc,6*L.sc,0,0,7);ctx.fill();
+  ctx.save();ctx.translate(cx+shake,y);ctx.scale(sx*L.sc,L.sc);if(m.flash>0&&(tNow*20|0)%2)ctx.globalAlpha=.4;
+  ctx.strokeStyle=L.dark;ctx.lineWidth=4;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-6,0);ctx.lineTo(-6+run*3,7);ctx.moveTo(6,0);ctx.lineTo(6-run*3,7);ctx.stroke();
+  ctx.strokeStyle=L.fur;ctx.lineWidth=3.5;ctx.beginPath();ctx.moveTo(-11,-8);ctx.quadraticCurveTo(-18,-14+Math.sin(tNow*14)*3,-15,-20);ctx.stroke();
+  ctx.fillStyle=L.fur;ctx.beginPath();ctx.ellipse(0,-6,12,8,0,0,7);ctx.fill();
+  ctx.fillStyle=L.vest;ctx.fillRect(-7,-10,14,6);
+  if(m.type==='captain'){ctx.fillStyle='#ffd34d';ctx.fillRect(-8,-11,16,2);ctx.fillStyle='#a8322f';ctx.beginPath();ctx.moveTo(-6,-12);ctx.lineTo(-16,-4+Math.sin(tNow*10)*2);ctx.lineTo(-5,-4);ctx.fill();} // cape
+  if(m.type==='squad'){ctx.fillStyle='#4a4a52';ctx.fillRect(4,-12,10,3);} // gun barrel
+  if(m.type==='sniper'){ctx.fillStyle='#2a2a30';ctx.fillRect(2,-13,24,2.5);ctx.fillRect(10,-16,6,3);} // long rifle with scope
+  ctx.fillStyle='#ffd34d';ctx.beginPath();ctx.arc(2,-7,1.8,0,7);ctx.fill();
+  ctx.fillStyle=L.fur;ctx.beginPath();ctx.ellipse(11,-15,8,7,0,0,7);ctx.fill();
+  ctx.fillStyle='#f4e2c4';ctx.beginPath();ctx.ellipse(17,-13,5,4,0,0,7);ctx.fill();
+  ctx.fillStyle='#2a2430';ctx.beginPath();ctx.arc(21,-14,1.8,0,7);ctx.fill();ctx.beginPath();ctx.arc(13,-17,1.5,0,7);ctx.fill();
+  ctx.fillStyle=L.dark;ctx.beginPath();ctx.ellipse(7,-16,3,6,.5,0,7);ctx.fill();
+  if(m.type==='scout'){ctx.fillStyle='#3a8a5a';ctx.fillRect(9,-26,4,6);ctx.strokeStyle='#3a8a5a';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(11,-26);ctx.lineTo(13,-33);ctx.stroke();ctx.fillStyle='#ff5a4a';ctx.beginPath();ctx.arc(13,-34,2,0,7);ctx.fill(); // antenna
+    ctx.fillStyle='rgba(140,230,255,.8)';ctx.fillRect(11,-19,7,3);} // goggles
+  else if(m.type==='squad'){ctx.fillStyle='#2a2a30';ctx.beginPath();ctx.ellipse(11,-20,8,5,0,Math.PI,0);ctx.fill();ctx.fillStyle='rgba(255,90,60,.9)';ctx.fillRect(12,-18,7,2);} // helmet + visor
+  else{ctx.fillStyle=L.cap;ctx.beginPath();ctx.ellipse(11,-22,7,3,0,0,7);ctx.fill();ctx.fillRect(7,-26,8,4);ctx.fillStyle='#ffd34d';ctx.fillRect(10,-25,2,2);
+    if(m.type==='captain'){ctx.fillStyle='#ffd34d';ctx.beginPath();ctx.moveTo(11,-30);ctx.lineTo(13,-26);ctx.lineTo(9,-26);ctx.fill();}}
+  ctx.restore();ctx.lineCap='butt';
+  const top=cy-38*L.sc;
+  if(S.escape&&S.state!=='ending'){ctx.fillStyle='#8fe3f5';for(let i=0;i<2;i++){const ph=(tNow*3+i*.5+m.bob)%1;ctx.globalAlpha=1-ph;ctx.beginPath();ctx.ellipse(cx+10*L.sc-i*4,top+6+ph*10,2,3,0,0,7);ctx.fill();}ctx.globalAlpha=1;
+    ctx.fillStyle='#ffe98a';ctx.font='800 12px "M PLUS Rounded 1c",sans-serif';ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=3;if(m.sayT>0)dogSay(m.say,cx,top,true);else{ctx.strokeText('ヒィ！',cx,top);ctx.fillText('ヒィ！',cx,top);}return;}
+  if(m.dizzyT>0){for(let i=0;i<3;i++){const a=tNow*5+i*2.1;ctx.fillStyle='#ffe98a';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('★',cx+Math.cos(a)*12,top+Math.sin(a)*4);}}
+  else if(m.mode==='windup'||m.barkT>0||m.alertT>0||m.called>0){const big=m.mode==='windup'||m.barkT>0||m.called>0,txt=m.mode==='windup'?'グルル…':m.type==='scout'&&m.barkT>0?'ワオーン！':m.barkT>0?'ワン！':'！';
+    ctx.fillStyle=big?'#ff5a4a':'#ffe98a';ctx.font=`800 ${big?16:14}px "M PLUS Rounded 1c",sans-serif`;ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=3;ctx.strokeText(txt,cx,top);ctx.fillText(txt,cx,top);}
+  else if(m.sayT>0)dogSay(m.say,cx,top,false);
+  if(m.type==='squad'){for(let i=0;i<3;i++){ctx.fillStyle=i<(m.hp||1)?'#ff5a6e':'rgba(255,255,255,.25)';ctx.beginPath();ctx.arc(cx-7+i*7,top-12,2.6,0,7);ctx.fill();}}
+}
+// enemy bullets when no boss is around (the boss update moves them otherwise)
+function updLooseShots(dt){
+  if(S.boss||!S.shots.length)return;const [fx,fy]=pPos();
+  for(const p of S.shots){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;const t=S.tile.get(K(Math.round(p.x),Math.round(p.y)));if(t!==0&&t!==3)shotWall(p,dt);if(p.glanced&&p.life>0)shotHitsSwat(p);
+    if(!p.glanced&&Math.hypot(p.x-fx,p.y-fy)<.45){if(S.guard&&!(S.pStun>0)&&guardFacing(p))glanceShot(p,fx,fy);else{hurt(p);p.life=0;}}}
+  S.shots=S.shots.filter(p=>p.life>0);
+}
+/* ---------- タレット: a fixed water cannon; keep it looking at you and it fires a water laser ---------- */
+function losClear(x0,y0,x1,y1){const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/.25),ox=Math.round(x0),oy=Math.round(y0);for(let i=1;i<n;i++){const x=Math.round(x0+(x1-x0)*i/n),y=Math.round(y0+(y1-y0)*i/n);if(x===ox&&y===oy)continue;if(!isFloor(x,y))return false;}return true;} // the viewer's own tile (a tower) never blocks
+function rayEnd(x0,y0,ang,max=12){const dx=Math.cos(ang),dy=Math.sin(ang);let d=.5;while(d<max&&isFloor(Math.round(x0+dx*d),Math.round(y0+dy*d)))d+=.1;return[x0+dx*d,y0+dy*d];}
+function turretAI(m,dt,fx,fy){
+  if(m.flash>0)m.flash-=dt;if(m.cd>0)m.cd-=dt;
+  if(m.mode==='aim'){m.t-=dt;if(m.t<=0){m.mode='fire';m.t=.6;tone(160,.6,'sawtooth',.06,-40);}return;}
+  if(m.mode==='fire'){m.t-=dt;m.end=rayEnd(m.x,m.y,m.ang);
+    if(segDist(fx,fy,m.x,m.y,m.end[0],m.end[1])<.42&&S.state==='play')hurt({x:m.x,y:m.y});
+    if(m.t<=0){m.mode=null;m.cd=2.6;m.spot=0;}return;}
+  const seen=S.state==='play'&&Math.hypot(fx-m.x,fy-m.y)<7.5&&losClear(m.x,m.y,fx,fy);
+  if(seen)m.ang=Math.atan2(fy-m.y,fx-m.x);
+  m.spot=seen?m.spot+dt:Math.max(0,m.spot-dt*.6);
+  if(seen&&!(m.beep>0)){tone(1100,.04,'square',.025);m.beep=.35;}if(m.beep>0)m.beep-=dt;
+  if(m.spot>=1.1&&!(m.cd>0)){m.mode='aim';m.t=.55;m.end=rayEnd(m.x,m.y,m.ang);tone(1300,.5,'sine',.03,400);}
+}
+function drawTurret(m,cx,cy){
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(cx,cy,12,6,0,0,7);ctx.fill();
+  const flash=m.flash>0&&(tNow*20|0)%2;block(cx,cy,10,flash?'#ffffff':'#6a7480');
+  const a=m.ang??0,[ax,ay]=[Math.cos(a)-Math.sin(a),(Math.cos(a)+Math.sin(a))*.5],l=Math.hypot(ax,ay)||1;
+  ctx.fillStyle=flash?'#fff':'#9aa6b2';ctx.beginPath();ctx.ellipse(cx,cy-16,9,6,0,0,7);ctx.fill();
+  ctx.strokeStyle='#4a5560';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(cx,cy-17);ctx.lineTo(cx+ax/l*16,cy-17+ay/l*16);ctx.stroke();ctx.lineCap='butt';
+  ctx.fillStyle=m.mode?'#3cc6e6':'#1a3a4a';ctx.beginPath();ctx.arc(cx+ax/l*16,cy-17+ay/l*16,3,0,7);ctx.fill();
+  if(m.spot>0&&!m.mode){const f=Math.min(1,m.spot/1.1);ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(cx-13,cy-40,26,4);ctx.fillStyle='#3cc6e6';ctx.fillRect(cx-13,cy-40,26*f,4);}
+  for(let i=0;i<2;i++){ctx.fillStyle=i<(m.hp||1)?'#ff5a6e':'rgba(255,255,255,.25)';ctx.beginPath();ctx.arc(cx-4+i*8,cy-46,2.4,0,7);ctx.fill();}
+}
+function drawTurretBeams(){
+  for(const m of S.mobs){if(m.type!=='turret'||m.s!==S.cur||!m.mode||!m.end)continue;
+    const a=isoD(m.x,m.y),e=isoD(m.end[0],m.end[1]),sx=a[0],sy=a[1]-17,ex=e[0],ey=e[1]-12;
+    if(m.mode==='aim'){ctx.strokeStyle=`rgba(60,198,230,${.4+.4*Math.sin(tNow*30)})`;ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);}
+    else{ctx.lineCap='round';ctx.strokeStyle='rgba(60,198,230,.45)';ctx.lineWidth=14;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();ctx.strokeStyle='rgba(225,250,255,.95)';ctx.lineWidth=4;ctx.stroke();ctx.lineCap='butt';
+      ctx.fillStyle='rgba(225,250,255,.8)';ctx.beginPath();ctx.arc(ex,ey,7+Math.random()*3,0,7);ctx.fill();}}
+}
+
+/* ---------- 犬の特殊部隊 (late boss): a sniper and a defender in a wide hall, half maze, half open ---------- */
+const swatFloor=s=>isBoss(s)&&(S.forceBoss?S.forceBoss==='swat':(s>=19&&!(S.story&&s===STORY_LAST)&&(S.story?s===19:(s-19)%10===0)));
+function swatLayout(s,ox,oy,G,start){
+  // the half the hero walks in from is a maze; the far half is open ground with a little cover
+  const fromLeft=start[0]-ox<=1,half=Math.floor(G/2),inMaze=(x,y)=>fromLeft?x<half:y<half;
+  for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++){const k=K(ox+x,oy+y);if(!inMaze(x,y))continue;
+    if(x%2===0&&y%2===0)S.tile.set(k,1);else if((x%2===0||y%2===0)&&Math.random()<.32)S.tile.set(k,1);}
+  // keep everything reachable
+  for(let pass=0;pass<40;pass++){const seen=new Set([K(start[0],start[1])]),q=[K(start[0],start[1])];
+    while(q.length){const k=q.pop();for(const n of [k+1,k-1,k+8192,k-8192])if(!seen.has(n)&&S.tile.get(n)===0&&S.sec.get(n)===s){seen.add(n);q.push(n);}}
+    let fixed=false;for(const [k,t] of S.tile){if(t!==0||S.sec.get(k)!==s||seen.has(k))continue;for(const n of [k+1,k-1,k+8192,k-8192]){const x=n%8192-ox,y=Math.floor(n/8192)-oy;
+      if(S.tile.get(n)===1&&x>0&&y>0&&x<G-1&&y<G-1&&!(x%2===0&&y%2===0)){S.tile.set(n,0);fixed=true;break;}}if(fixed)break;}
+    if(!fixed)break;}
+  // cover blocks out in the open
+  for(const [a,b] of [[.62,.3],[.62,.7],[.8,.5],[.72,.15],[.72,.85]]){const x=Math.round(fromLeft?a*(G-1):b*(G-1)),y=Math.round(fromLeft?b*(G-1):a*(G-1));S.tile.set(K(ox+x,oy+y),7);}
+}
+function ricochet(p,dt){
+  // bounce off whichever face of the wall it ran into
+  const px=p.x-p.vx*dt,py=p.y-p.vy*dt,bx=!isFloor(Math.round(p.x),Math.round(py)),by=!isFloor(Math.round(px),Math.round(p.y));
+  if(bx||!by)p.vx=-p.vx;if(by||!bx)p.vy=-p.vy;p.x=px;p.y=py;p.ric--;burst(px,py,'#ffe98a',4);tone(2000+Math.random()*400,.05,'square',.03,-600);
+}
+function startSwat(B){
+  const sec=S.sections[B.s],G=sec.G,fromLeft=sec.start[0]-sec.ox<=1,at=(a,b)=>fromLeft?[sec.ox+Math.round(a*(G-1)),sec.oy+Math.round(b*(G-1))]:[sec.ox+Math.round(b*(G-1)),sec.oy+Math.round(a*(G-1))];
+  // two sniper towers out in the open, three tiers each
+  B.towers=[at(.88,.25),at(.88,.75)].map(([x,y])=>{S.tile.set(K(x,y),7);return{x,y,tier:3};});
+  const tw=B.towers[0],[dx,dy]=at(.74,.5);
+  const unit=(role,x,y,hp)=>({type:role,role,x,y,tx:x,ty:y,p:0,moving:false,dir:[fromLeft?-1:0,fromLeft?0:-1],s:B.s,bob:Math.random()*6,hp,max:hp,alertT:0,cd:2,face:[fromLeft?-1:0,fromLeft?0:-1]});
+  const sn=unit('sniper',tw.x,tw.y,2);sn.onTower=tw;
+  B.units=[sn,unit('defender',isFloor(dx,dy)?dx:tw.x-1,isFloor(dx,dy)?dy:tw.y,3)];
+  B.max=B.hp=5;B.cx=B.hx=-999;B.cy=B.hy=-999;B.name='犬の特殊部隊';B.need=2;
+}
+const towerOf=(B,k)=>B.towers&&B.towers.find(t=>t.tier>0&&K(t.x,t.y)===k);
+function towerHit(B,tw){
+  tw.tier--;burst(tw.x,tw.y,'#a8acb4',16);tone(140,.3,'square',.07,-60);
+  if(tw.tier>0){bannerShow('',`高台が崩れた！ 残り ${tw.tier} 段`,1);return;}
+  S.tile.set(K(tw.x,tw.y),0);for(let i=0;i<3;i++)burst(tw.x,tw.y,'#8a8f98',14);tone(60,.6,'sawtooth',.08,-20);
+  const sn=B.units.find(u=>u.role==='sniper'&&u.onTower===tw);
+  if(sn){sn.onTower=null;sn.stun=5;sn.aim=0;bannerShow('狙撃手が落ちた！','しばらく動けない、今だ！',1.6);}
+}
+function snFleeStep(sn,fx,fy){
+  // run to whichever neighbouring tile puts the most distance between it and the hero
+  const opts=DIRS.filter(([dx,dy])=>{const k=K(sn.x+dx,sn.y+dy);return isFloor(sn.x+dx,sn.y+dy)&&S.sec.get(k)===sn.s&&!S.doorAt.has(k);});
+  if(!opts.length)return null;opts.sort((a,b)=>Math.hypot(fx-sn.x-b[0],fy-sn.y-b[1])-Math.hypot(fx-sn.x-a[0],fy-sn.y-a[1]));return opts[0];
+}
+function swatAI(B,dt){
+  const [fx,fy]=pPos(),snipers=B.units.filter(u=>u.role==='sniper'&&u.hp>0),df=B.units.find(u=>u.role==='defender'&&u.hp>0);
+  for(const u of B.units)if(u.flash>0)u.flash-=dt;
+  // reinforcements: every so often a couple of the dog force burst into the hall
+  if((B.callT=(B.callT??10)-dt)<=0){B.callT=16;callSwatMinions(B,B.rush?3:2);}
+  for(const sn of snipers){
+    if(sn.cd>0)sn.cd-=dt;
+    if(sn.stun>0){sn.stun-=dt;sn.aim=0;continue;}
+    if(sn.onTower){ // up on its tower: snipe from afar with a laser sight, then a fast straight bullet
+      if(sn.aim>0){sn.aim-=dt;sn.ang=Math.atan2(fy-sn.y,fx-sn.x);
+        if(sn.aim<=0){const a=sn.ang;S.shots.push({x:sn.x+Math.cos(a)*.7,y:sn.y+Math.sin(a)*.7,vx:Math.cos(a)*11,vy:Math.sin(a)*11,life:4,swat:true});tone(1500,.12,'square',.05,-900);sn.cd=2.4+Math.random()*.6;}}
+      else if(!(sn.cd>0)&&losClear(sn.x,sn.y,fx,fy)){sn.aim=1.1;tone(1800,.4,'sine',.02,300);}
+      continue;}
+    // on the ground: make for a free standing tower, or bolt from the hero
+    sn.aim=0;const taken=new Set(snipers.filter(o=>o!==sn).map(o=>o.onTower||o.goalTw).filter(Boolean));
+    const tw=B.towers.filter(t=>t.tier>0&&!taken.has(t)).sort((a,b)=>Math.hypot(a.x-sn.x,a.y-sn.y)-Math.hypot(b.x-sn.x,b.y-sn.y))[0],near=Math.hypot(fx-sn.x,fy-sn.y)<5;sn.goalTw=tw||null;
+    if(tw&&Math.abs(sn.x-tw.x)+Math.abs(sn.y-tw.y)===1&&!sn.moving){sn.onTower=tw;sn.goalTw=null;sn.x=sn.tx=tw.x;sn.y=sn.ty=tw.y;tone(700,.15,'triangle',.04,300);bannerShow('','狙撃手が高台に登った',.9);}
+    else moveMob(sn,dt,near||tw?5.6:2.4,()=>{if(near&&!tw)return snFleeStep(sn,fx,fy);if(tw)return dogStep(sn,tw.x+(sn.x<tw.x?-1:sn.x>tw.x?1:0),tw.y+(sn.x===tw.x?(sn.y<tw.y?-1:1):0),3000)||snFleeStep(sn,fx,fy);return null;});}
+  for(const u of B.units){if(u.hp<=0||u.onTower||u.moving)continue;const [ux,uy]=mobPos(u);if(Math.hypot(ux-fx,uy-fy)<.5)shoveMob(u,fx,fy,1);}
+  if(df&&df.stagT>0){df.stagT-=dt;}
+  else if(df&&df.rage)rageAI(df,dt,fx,fy);
+  else if(df){ // the big defender keeps its shield to the hero, stands between it and the nearest sniper, and shoves anyone who closes in
+    if(df.shoveCd>0)df.shoveCd-=dt;
+    const [mx0,my0]=mobPos(df),fl=Math.hypot(fx-mx0,fy-my0)||1;df.face=[(fx-mx0)/fl,(fy-my0)/fl];
+    const ward=snipers.slice().sort((a,b)=>Math.hypot(a.x-fx,a.y-fy)-Math.hypot(b.x-fx,b.y-fy))[0]||df,close=Math.hypot(fx-ward.x,fy-ward.y)<6||Math.hypot(fx-mx0,fy-my0)<3.5;
+    const wl=Math.hypot(fx-ward.x,fy-ward.y)||1,post=[ward.x+(fx-ward.x)/wl*1.8,ward.y+(fy-ward.y)/wl*1.8],tgt=close?[fx,fy]:post;
+    moveMob(df,dt,close?1.4:1.0,()=>{if(Math.abs(df.x-Math.round(tgt[0]))+Math.abs(df.y-Math.round(tgt[1]))<=0)return null;return dogStep(df,tgt[0],tgt[1],2500);});
+    const [mx,my]=mobPos(df);
+    if(S.state==='play'&&Math.hypot(mx-fx,my-fy)<1&&!(df.shoveCd>0)){df.shoveCd=1.4;
+      if(S.guard&&!(S.pStun>0)&&guardFacing({x:mx,y:my})){guardBlock({x:mx,y:my});bannerShow('','ガキン！ ディフェンダーとぶつかった',.8);}
+      else{const d=awayDir({x:mx,y:my});hurt({x:mx,y:my});if(d&&S.state==='play')S.dash={dir:d,left:2,stop:true,kb:true,t:0,dur:.3};bannerShow('','ディフェンダーに突き飛ばされた！',1);}}}
+}
+/* the boss-rush special forces: blocks rise out of the hall floor, a maze half and some cover, like their own hall */
+function rushSwatBlocks(B){
+  const sec=S.sections[B.s],G=sec.G,ox=sec.ox,oy=sec.oy,P=S.P,fromLeft=sec.start[0]-ox<=1,half=Math.floor(G/2),plan=new Set();
+  const keep=new Set();const guard=(x,y,r)=>{for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)keep.add(K(x+dx,y+dy));};
+  guard(P.x,P.y,1);for(const u of B.units)guard(u.x,u.y,1);for(const t of B.towers)guard(t.x,t.y,1);
+  for(const [k,f] of S.feat)if(S.sec.get(k)===B.s)keep.add(k);
+  for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++){const X=ox+x,Y=oy+y,k=K(X,Y);if(S.tile.get(k)!==0||keep.has(k))continue;
+    const maze=fromLeft?x<half:y<half;
+    if(maze&&((x%2===0&&y%2===0)||((x%2===0||y%2===0)&&Math.random()<.28)))plan.add(k);}
+  for(const [a,b] of [[.62,.3],[.62,.7],[.74,.5]]){const x=Math.round(fromLeft?a*(G-1):b*(G-1)),y=Math.round(fromLeft?b*(G-1):a*(G-1)),k=K(ox+x,oy+y);if(S.tile.get(k)===0&&!keep.has(k))plan.add(k);}
+  // never cut anything off: open planned blocks until every free tile is reachable from the hero
+  for(let pass=0;pass<60;pass++){const st=K(P.x,P.y),seen=new Set([st]),q=[st];
+    while(q.length){const k=q.pop();for(const n of [k+1,k-1,k+8192,k-8192])if(!seen.has(n)&&S.tile.get(n)===0&&S.sec.get(n)===B.s&&!plan.has(n)){seen.add(n);q.push(n);}}
+    let fixed=false;for(const [k,sid] of S.sec){if(sid!==B.s||S.tile.get(k)!==0||plan.has(k)||seen.has(k))continue;for(const n of [k+1,k-1,k+8192,k-8192])if(plan.has(n)){plan.delete(n);fixed=true;break;}if(fixed)break;}
+    if(!fixed)break;}
+  for(const k of plan){const x=k%8192,y=Math.floor(k/8192);S.falls.push({x,y,t:-Math.random()*.6,warn:.6,drop:.3,state:'warn',amida:true});}
+  tone(300,.5,'square',.04,-200);
+}
+function callSwatMinions(B,n){
+  // up to six of them at a time, dropped in away from the hero
+  const alive=S.mobs.filter(m=>m.swatMinion&&m.s===B.s).length;n=Math.min(n,6-alive);if(n<=0)return;
+  const sec=S.sections[B.s],[fx,fy]=pPos(),cand=[];
+  for(let y=1;y<sec.G-1;y++)for(let x=1;x<sec.G-1;x++){const X=sec.ox+x,Y=sec.oy+y,k=K(X,Y);if(S.tile.get(k)!==0||S.feat.get(k)||Math.hypot(X-fx,Y-fy)<5||B.units.some(u=>u.x===X&&u.y===Y))continue;cand.push([X,Y]);}
+  cand.sort(()=>Math.random()-.5);
+  for(let i=0;i<n&&i<cand.length;i++){const [x,y]=cand[i],type=Math.random()<.5?'dog':'squad';
+    S.mobs.push({type,x,y,tx:x,ty:y,p:0,moving:false,dir:null,s:B.s,bob:Math.random()*6,alertT:6,hp:type==='squad'?3:1,fireCd:1.5,swatMinion:true});burst(x,y,'#ff5a4a',12);}
+  tone(880,.12,'square',.05);setTimeout(()=>tone(660,.12,'square',.05),140);bannerShow('','部隊の増援が来た！',1.1);
+}
+const shieldCovers=(u,sx,sy)=>{if(u.role!=='defender'||u.rage)return false;const [mx,my]=mobPos(u),dx=sx-mx,dy=sy-my,l=Math.hypot(dx,dy)||1;return (dx*u.face[0]+dy*u.face[1])/l>.3;};
+/* the enraged defender: no shield, straight-line tackles that smash through any block in the way */
+function enrage(df){
+  df.rage=true;df.stagT=0;df.mode=null;df.shoveCd=0;const [mx,my]=mobPos(df);
+  for(let i=0;i<10;i++)S.parts.push({x:mx,y:my,z:30,vx:(Math.random()-.5)*4,vy:(Math.random()-.5)*4,vz:120,life:.8,max:.8,c:'#8cb0d8',r:4}); // the shield clatters away
+  tone(90,.6,'sawtooth',.08,40);setTimeout(()=>tone(70,.8,'sawtooth',.08,30),250);
+  setTimeout(()=>{if(S.boss&&S.boss.type==='swat'&&df.hp>0)bannerShow('ディフェンダーが激昂した！','盾を捨てて突進してくる',1.8);},1300);
+}
+function rageAI(df,dt,fx,fy){
+  const [mx0,my0]=mobPos(df),fl=Math.hypot(fx-mx0,fy-my0)||1;if(df.mode!=='tackle')df.face=[(fx-mx0)/fl,(fy-my0)/fl];
+  if(df.mode==='tired'){df.t-=dt;if(df.t<=0)df.mode=null;return;}
+  if(df.mode==='windup'){df.t-=dt;if(df.t<=0){df.mode='tackle';df.run=0;tone(80,.6,'sawtooth',.08,60);}return;}
+  if(df.mode==='tackle'){
+    const sec=S.sections[df.s];let rem=7.5*dt;
+    while(rem>1e-6){
+      if(!df.moving){const [dx,dy]=df.dir,nx=df.x+dx,ny=df.y+dy,k=K(nx,ny),t=S.tile.get(k);
+        if(heroAt(nx,ny)){tackleHits(df,nx,ny);return;}
+        const inner=nx>sec.ox&&ny>sec.oy&&nx<sec.ox+sec.G-1&&ny<sec.oy+sec.G-1;
+        if(t!==0){
+          if(inner&&(t===1||t===5||t===7)&&!S.doorAt.has(k)){ // smash straight through
+            const tw=towerOf(S.boss,k);if(tw)tw.tier=0;S.tile.set(k,0);for(let i=0;i<2;i++)burst(nx,ny,'#a8a090',14);tone(70,.3,'square',.08,-20);S.quake=Math.max(S.quake||0,.6);rem*=.6;}
+          else{df.mode='tired';df.t=1.3;burst(df.x+dx*.5,df.y+dy*.5,'#c9b285',12);tone(60,.4,'square',.08,-20);return;}}
+        if(++df.run>14){df.mode='tired';df.t=1;return;}
+        df.tx=nx;df.ty=ny;df.moving=true;df.p=0;}
+      const st=Math.min(rem,1-df.p);df.p+=st;rem-=st;if(df.p>=1-1e-6){df.x=df.tx;df.y=df.ty;df.moving=false;df.p=0;}}
+    if(Math.random()<dt*40){const [mx,my]=mobPos(df);S.parts.push({x:mx,y:my,z:3,vx:(Math.random()-.5),vy:(Math.random()-.5),vz:40,life:.4,max:.4,c:'rgba(200,190,170,.7)',r:3});}
+    return;}
+  if(df.moving){moveMob(df,dt,1.4,()=>null);return;}
+  // line up on the hero's longer axis and wind up
+  const dx=Math.round(fx)-df.x,dy=Math.round(fy)-df.y;df.dir=Math.abs(dx)>=Math.abs(dy)?[Math.sign(dx)||1,0]:[0,Math.sign(dy)||1];
+  df.mode='windup';df.t=.7;tone(180,.4,'sawtooth',.06,-60);
+}
+function tackleHits(df,nx,ny){
+  df.mode='tired';df.t=1.2;const [mx,my]=mobPos(df);
+  if(S.guard&&!(S.pStun>0)&&guardFacing({x:mx,y:my})){guardBlock({x:mx,y:my});shoveMob(df,S.P.x,S.P.y,2);df.stagT=1;bannerShow('','ガキン！ タックルを受け止めた',.9);}
+  else{const d=awayDir({x:mx,y:my});hurt({x:mx,y:my});if(d&&S.state==='play')S.dash={dir:d,left:3,stop:true,kb:true,t:0,dur:.35};bannerShow('','ディフェンダーのタックル！',1);}
+}
+function swatHit(u,msg,src){
+  const B=S.boss;if(!B||B.dying>0||u.hp<=0||u.flash>0)return false;
+  if(u.role==='sniper'&&u.onTower){bannerShow('','高台の上には届かない',.7);return false;}
+  if(src&&shieldCovers(u,src.x,src.y)){const [mx,my]=mobPos(u);burst(mx+u.face[0]*.7,my+u.face[1]*.7,'#ffe98a',10);tone(1100,.1,'square',.05,-300);bannerShow('','ガキン！ 大盾で防がれた',.7);return false;}
+  u.hp--;u.flash=.6;const [mx,my]=mobPos(u);burst(mx,my,'#ffe98a',12);
+  damageBoss(B,msg);if(u.hp<=0){burst(mx,my,'#ff5a4a',18);bannerShow('',u.role==='sniper'?'狙撃手を倒した！':'ディフェンダーを倒した！',1.2);
+    const df=B.units.find(x=>x.role==='defender'&&x.hp>0);if(u.role==='sniper'&&df&&S.boss&&!B.units.some(x=>x.role==='sniper'&&x.hp>0)){enrage(df);}}return true;
+}
+function drawSwatUnits(k){
+  const B=S.boss;if(!B||B.type!=='swat')return;
+  for(const u of B.units){if(u.hp<=0||u.onTower)continue;const d=u.moving?Math.max(u.x+u.y,u.tx+u.ty):u.x+u.y;if(d!==k)continue;const [mx,my]=mobPos(u),[sx,sy]=iso(mx,my),cy=sy+dep(u.x,u.y);drawSwatUnit(u,sx,cy);}
+}
+function drawSwatUnit(u,sx,cy){
+  if(u.stagT>0){const f=Math.min(1,u.stagT/1.4);ctx.save();ctx.translate(sx,cy);ctx.rotate(-(u.face[0]-u.face[1]>=0?1:-1)*.35*f);ctx.translate(-sx,-cy);drawDog(u,sx,cy);ctx.restore();
+    for(let i=0;i<2;i++){const a=tNow*6+i*3;ctx.fillStyle='#ffe98a';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('★',sx+Math.cos(a)*16,cy-70+Math.sin(a)*4);}}
+  else drawDog(u,sx,cy);
+  if(u.role==='defender'&&u.rage){ctx.fillStyle=`rgba(255,60,40,${.25+.15*Math.sin(tNow*12)})`;ctx.beginPath();ctx.ellipse(sx,cy-4,26,12,0,0,7);ctx.fill();
+    if(Math.random()<.3)S.parts.push({x:u.x+(Math.random()-.5)*.6,y:u.y+(Math.random()-.5)*.6,z:40,vx:0,vy:0,vz:40,life:.5,max:.5,c:'rgba(255,120,100,.7)',r:3,bubble:1});
+    if(u.mode==='windup'){ctx.fillStyle='#ff5a4a';ctx.font='800 16px "M PLUS Rounded 1c",sans-serif';ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=3;ctx.strokeText('ガルルル！',sx,cy-78);ctx.fillText('ガルルル！',sx,cy-78);}}
+  else if(u.role==='defender'){const fx=(u.face[0]-u.face[1]),fy=(u.face[0]+u.face[1])*.5,l=Math.hypot(fx,fy)||1; // the big shield, always toward the hero
+    ctx.save();ctx.translate(sx+fx/l*22,cy-24+fy/l*10);ctx.fillStyle='rgba(140,170,210,.75)';ctx.strokeStyle='#1a2a4a';ctx.lineWidth=2.5;ctx.beginPath();ctx.roundRect(-9,-20,18,36,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.35)';ctx.fillRect(-6,-16,4,26);ctx.restore();}
+  if(u.role==='sniper'&&u.aim>0){const e=rayEnd(u.x,u.y,u.ang,16),q=isoD(e[0],e[1]);ctx.strokeStyle=`rgba(255,40,40,${.5+.4*Math.sin(tNow*40)})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(sx,cy-18);ctx.lineTo(q[0],q[1]-12);ctx.stroke();}
+  if(u.stun>0)for(let i=0;i<3;i++){const a=tNow*5+i*2.1;ctx.fillStyle='#ffe98a';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText('★',sx+Math.cos(a)*13,cy-44+Math.sin(a)*4);}
+  const top=cy-(u.role==='defender'?66:52);for(let i=0;i<u.max;i++){ctx.fillStyle=i<u.hp?'#ff5a6e':'rgba(255,255,255,.25)';ctx.beginPath();ctx.arc(sx-(u.max-1)*3.5+i*7,top,2.6,0,7);ctx.fill();}
+}
+function drawTower(x,y,cx,cy){
+  const B=S.boss;if(!B||B.type!=='swat'||!B.towers)return false;const tw=B.towers.find(t=>t.x===x&&t.y===y&&t.tier>0);if(!tw)return false;
+  for(let i=0;i<tw.tier;i++){block(cx,cy-i*15,15,i%2?'#9aa0a8':'#868c96');ctx.strokeStyle='rgba(30,30,40,.45)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx-HW,cy-i*15);ctx.lineTo(cx,cy+HH-i*15);ctx.lineTo(cx+HW,cy-i*15);ctx.stroke();}
+  const sn=B.units.find(u=>u.onTower===tw&&u.hp>0);if(sn)drawSwatUnit(sn,cx,cy-tw.tier*15-HH*.4);
+  return true;
+}
+function shotWall(p,dt){
+  // the sniper's bullets just stop; a bullet you knocked back ricochets, and chips a tower if it strikes one
+  const B=S.boss,k=K(Math.round(p.x),Math.round(p.y));
+  if(B&&B.type==='swat'){const tw=towerOf(B,k);if(tw){if(p.glanced)towerHit(B,tw);p.life=0;return;}}
+  if(p.ric>0)ricochet(p,dt);else p.life=0;
+}
+function shotHitsSwat(p){const B=S.boss;if(!B||B.type!=='swat')return;for(const u of B.units){if(u.hp<=0||u.onTower)continue;const [mx,my]=mobPos(u);if(Math.hypot(mx-p.x,my-p.y)<(u.role==='defender'?.85:.6)){swatHit(u,'跳弾',{x:p.x-p.vx,y:p.y-p.vy});p.life=0;return;}}}
+function drawTracer(p){const a=isoD(p.x,p.y),b=isoD(p.x-p.vx*.06,p.y-p.vy*.06);ctx.strokeStyle='rgba(255,230,150,.95)';ctx.lineWidth=3;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(b[0],b[1]-14);ctx.lineTo(a[0],a[1]-14);ctx.stroke();ctx.lineCap='butt';}
+/* the hourglass picture in the HUD: sand drains from the top bulb to the bottom */
+function drawHourglass(frac){
+  const c=$('hgcv');if(!c)return;const g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);
+  const top=4,mid=h/2,bot=h-4,L=4,R=w-4,cx=w/2;
+  const bulb=(y0,y1,flip)=>{g.beginPath();g.moveTo(L,y0);g.lineTo(R,y0);g.lineTo(cx+1.5,y1);g.lineTo(cx-1.5,y1);g.closePath();};
+  g.fillStyle='rgba(200,230,255,.18)';bulb(top,mid,0);g.fill();g.beginPath();g.moveTo(L,bot);g.lineTo(R,bot);g.lineTo(cx+1.5,mid);g.lineTo(cx-1.5,mid);g.closePath();g.fill();
+  g.fillStyle='#ffd34d';const tf=Math.max(0,Math.min(1,frac)); // top sand: a shrinking triangle sitting at the neck
+  if(tf>0){const yy=mid-(mid-top)*Math.sqrt(tf)*.95,hw=(R-L)/2*((mid-yy)/(mid-top));g.beginPath();g.moveTo(cx-hw,yy);g.lineTo(cx+hw,yy);g.lineTo(cx+1.5,mid);g.lineTo(cx-1.5,mid);g.closePath();g.fill();}
+  const bf=1-tf;if(bf>0){const hh=(bot-mid)*Math.sqrt(bf)*.9;g.beginPath();g.moveTo(L+1,bot);g.lineTo(R-1,bot);g.lineTo(cx+(R-L)/2*(1-hh/(bot-mid))*.9,bot-hh);g.lineTo(cx-(R-L)/2*(1-hh/(bot-mid))*.9,bot-hh);g.closePath();g.fill();}
+  if(tf>0&&tf<1){g.fillStyle='#ffd34d';g.fillRect(cx-.8,mid,1.6,(bot-mid)*.85);}
+  g.strokeStyle='#e8d6a8';g.lineWidth=2;g.beginPath();g.moveTo(L-2,top);g.lineTo(R+2,top);g.moveTo(L-2,bot);g.lineTo(R+2,bot);g.stroke();
+  g.strokeStyle='rgba(220,240,255,.85)';g.lineWidth=1.2;bulb(top,mid,0);g.stroke();g.beginPath();g.moveTo(L,bot);g.lineTo(R,bot);g.lineTo(cx+1.5,mid);g.lineTo(cx-1.5,mid);g.closePath();g.stroke();
+}
 /* ---------- obstacle: いわガニ, rock crabs that wander the corridors (from the 2nd maze set on) ---------- */
 function spawnMobs(s,cells,used){
   return; // obstacle enemies are switched off for now
@@ -603,7 +1106,16 @@ function spawnMobs(s,cells,used){
 const mobPos=m=>m.moving?[m.x+(m.tx-m.x)*m.p,m.y+(m.ty-m.y)*m.p]:[m.x,m.y];
 function updMobs(dt){
   const [fx,fy]=pPos();
+  if(S.escape){for(const m of S.mobs)escapeMob(m,dt);S.mobs=S.mobs.filter(m=>!m.gone);updMobFalls(dt);return;}
   for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;if(m.fleeT>0)m.fleeT-=dt;
+    if(m.type==='camera'){cameraAI(m,dt,fx,fy);continue;}
+    if(m.type==='turret'){turretAI(m,dt,fx,fy);continue;}
+    if(DOG_KINDS.has(m.type)){if(m.called>0)m.called-=dt;dogChatter(m,dt,fx,fy,false);({dog:dogAI,captain:captainAI,scout:scoutAI,squad:squadAI})[m.type](m,dt,fx,fy);const [mx,my]=mobPos(m);
+      if(m.ram>0)m.ram-=dt;
+      if(!m.moving&&Math.hypot(mx-fx,my-fy)<.5)shoveMob(m,fx,fy,1); // overlapping: step aside
+      if(S.state==='play'&&S.guard&&!(S.pStun>0)&&Math.hypot(mx-fx,my-fy)<1.1&&guardFacing({x:mx,y:my})){const ch=m.mode==='charge'||m.ram>0;bounceMob(m,fx,fy);if(ch){m.mode=null;m.dizzyT=2;}continue;}
+      if(S.state==='play'&&Math.hypot(mx-fx,my-fy)<1.05&&!(m.fleeT>0)&&!(m.dizzyT>0)){const h=S.hearts;hurt({x:mx,y:my});if(S.hearts<h)bannerShow('',DOG_NAME[m.type]+(m.mode==='charge'||m.ram>0?'の突進！':'にかまれた！'),.9);m.fleeT=1.6;if(m.type!=='scout')m.alertT=0;}
+      continue;}
     if(S.ice<=0){let rem=m.spd*dt,g=0;
       while(rem>1e-6&&g++<6){
         if(!m.moving){const opts=DIRS.filter(([dx,dy])=>{const k=K(m.x+dx,m.y+dy);return isFloor(m.x+dx,m.y+dy)&&S.sec.get(k)===m.s&&!S.doorAt.has(k)&&!S.armSet.has(k);});
@@ -639,7 +1151,7 @@ function drawMob(m,cx,cy){
 /* ---------- amida boss: blocks pack the columns between five lanes, leaving a gap every 1-2 blocks;
    the bull then charges down a lane and cuts across at every gap, like a ladder lottery ---------- */
 const AM_LANES=[3,5,7,9,11];
-function pickBossType(s){if(S.forceBoss)return S.forceBoss;const prev=S.lastBossType,pool=BOSS_ORDER.filter(t=>t!==prev);const t=pool[Math.random()*pool.length|0];S.lastBossType=t;return t;}
+function pickBossType(s){if(S.forceBoss)return S.forceBoss;if(swatFloor(s))return'swat';const prev=S.lastBossType,pool=BOSS_ORDER.filter(t=>t!==prev);const t=pool[Math.random()*pool.length|0];S.lastBossType=t;return t;}
 function spawnAmidaBlocks(B){
   const sec=S.sections[B.s],open=[new Set(),new Set(),new Set(),new Set()];
   for(let gi=0;gi<4;gi++){let y=2+(Math.random()*2|0);
@@ -720,7 +1232,7 @@ function drawAmida(B,cx,cy){
 function bossTestMenu(){
   const names={ball:'転がる大玉',dice:'気まぐれ大賽',guardian:'石の番人',amida:'あみだ角牛'};
   show(`<h2>ボス戦テスト</h2><p class="hint">テストで遊んだ分は、ハイスコア・トロフィー・アーカイブには記録されません。</p>
-  <div class="bt-list">${BOSS_ORDER.map(t=>`<button class="btn bt" data-t="${t}">${names[t]}</button>`).join('')}<button class="btn bt" data-t="great" style="grid-column:1/-1">大番人ガーディアン（B25・ストーリー）</button></div>
+  <div class="bt-list">${BOSS_ORDER.map(t=>`<button class="btn bt" data-t="${t}">${names[t]}</button>`).join('')}<button class="btn bt" data-t="swat" style="grid-column:1/-1">犬の特殊部隊（後半ボス）</button><button class="btn bt" data-t="great" style="grid-column:1/-1">大番人ガーディアン（B25・ストーリー）</button></div>
   <div class="row ss-row"><label class="hint bt-zone">大番人戦の始まり<select id="gphase"><option value="rush">召喚ラッシュの最初から</option><option value="body">本体戦から</option><option value="core">水晶核の出現から（撃破後）</option><option value="escape">脱出から（撃破後）</option><option value="secret">シークレットエンド演出</option></select></label>
   <label class="hint bt-zone">救難ねこの救出数（ストーリー）<select id="tcats">${Array.from({length:21},(_,i)=>`<option value="${i}">${i} / ${CATS_TOTAL}${i===CATS_TOTAL?'（全員）':''}</option>`).join('')}</select></label></div>
   <label class="hint bt-zone">強さ（迷宮の段階）<select id="btzone">${[0,1,2,3].map(z=>`<option value="${z}">${z+1}番目の迷宮</option>`).join('')}<option value="final">最終戦（大番人が呼ぶ強化版）</option></select></label>
@@ -1106,7 +1618,7 @@ function rescueCat(k){
 /* ---------- great guardian ---------- */
 function startGreat(s){
   const sec=S.sections[s],c=(sec.G-1)/2;
-  S.great={s,phase:1,queue:['ball','dice','guardian','amida'],hx:sec.ox+c,hy:sec.oy+c,n:0};
+  S.great={s,phase:1,queue:['ball','dice','guardian','amida','swat'],hx:sec.ox+c,hy:sec.oy+c,n:0};
   S.drainT=0;S.shots=[];S.rings=[];S.falls=[];S.bossHeart=S.hearts;S.spears=[];S.spearQ=[];S.spearRespawn=[];S.pits=[];S.greatT=3;
   bannerShow(`最深部 B${s+1}F`,'大番人ガーディアン',2.8);tone(70,1.2,'sawtooth',.07,-20);setTimeout(()=>tone(55,1.4,'sawtooth',.07,-10),400);
 }
@@ -1118,7 +1630,7 @@ function greatNext(){
     if(t==='ball')placePitSwitches(G.s,sec.ox,sec.oy,sec.G,sec.start,S.doors[G.s]&&S.doors[G.s].inner);
     startBoss(G.s);S.boss.minion=true;S.boss.rush=true;rushSetup(t);G.beam=1;burst(G.hx,G.hy,'#ff5a8a',20);tone(180,.5,'sawtooth',.05,300);
     if(t==='dice'){S.boss.size=5;S.boss.max=S.boss.hp=diceHits(5,true);} // one giant die: a size up and 2 more HP than the regular dice boss
-    bannerShow(`強化された番人 ${G.n} / 4`,S.boss.name,1.6);return;}
+    bannerShow(`強化された番人 ${G.n} / 5`,S.boss.name,1.6);return;}
   if(G.phase===1){G.phase=2;startGreatCore();}
 }
 function startGreatCore(){
@@ -1204,6 +1716,7 @@ function drawGreatShadow(){
 function floodAll(){
   // the great guardian's fall breaks every dam: the whole dungeon goes under at once
   S.drainT=0;S.drainF=1;S.heap.length=0;S.queued.clear();
+  for(const d of S.doors)if(d&&d.holding){d.holding=false;d.hourglass=null;d.open=true;d.perm=true;d.broken=true;S.tile.set(K(d.x,d.y),0);}
   for(const [k,t] of S.tile)if(t===0||t===3)S.arr.set(k,S.wt-FILL*3);
   fadeW=1;tone(60,1.4,'sawtooth',.07,-20);
 }
@@ -1432,7 +1945,8 @@ function updEscape(dt){
   while(S.crumI<S.crumQ.length&&S.crumQ[S.crumI][0]<=S.crumT){const k=S.crumQ[S.crumI++][1];S.crumAt.delete(k);
     if(S.tile.get(k)!==0&&S.tile.get(k)!==3)continue;S.tile.set(k,6);S.arr.delete(k);const f=S.feat.get(k);if(f&&f.type!=='archive')S.feat.delete(k);
     const x=k%8192,y=Math.floor(k/8192);if(n++<4)burst(x,y,'#8a7a62',5);
-    if((P.x===x&&P.y===y)||(P.moving&&P.tx===x&&P.ty===y))fell=true;}
+    if((P.x===x&&P.y===y)||(P.moving&&P.tx===x&&P.ty===y))fell=true;
+    for(const m of S.mobs){if(m.gone)continue;const [mx,my]=mobPos(m);if(Math.round(mx)===x&&Math.round(my)===y)swallowMob(m,mx,my);}}
   if(n&&Math.random()<.25)tone(40+Math.random()*20,.5,'sawtooth',.04,-10);
   if(fell)crumbleFall();
   if(S.crumT>0&&(S.rockT=(S.rockT??2)-dt)<=0){S.rockT=.55+Math.random()*.6;
@@ -1550,8 +2064,8 @@ function startEnding(kind){
   if((kind==='party'||kind==='escape')&&S.story&&S.continues===0)trophy('story_nocont');
   if(kind==='party')trophy('party_end');else if(kind==='escape')trophy('escape_end');else if(kind==='secret')trophy('secret_end');else trophy('buried_end');
   if(kind==='secret'){S.score+=20000;S.secT0=tNow;secretSfx();}
-  const info={party:['パーティエンド',`救難ねこ ${S.cats} 匹を全員連れて、地上へ帰ってきた。今夜はみんなでお祝いだ！`],
-    escape:['脱出エンド',`崩れる迷宮から地上へ逃げきった。救えた救難ねこは ${S.cats} / ${CATS_TOTAL} 匹。まだ地下に仲間が残っている…`],
+  const info={party:['パーティエンド',`救難ねこ ${S.cats} 匹を全員連れて、地上へ帰ってきた。逃げてきた犬の警備隊もいっしょに、今夜はみんなでお祝いだ！`],
+    escape:['脱出エンド',`崩れる迷宮から地上へ逃げきった。いっしょに逃げてきた犬たちと、焚き火を囲んで夜を過ごす。救えた救難ねこは ${S.cats} / ${CATS_TOTAL} 匹。まだ地下に仲間が残っている…`],
     secret:['シークレットエンド','来られないはずの、ねこ救助隊。崩れ落ちる迷宮を猛スピードで飛んできて、落ちていくきみをつかまえた。20匹の救難ねこもみんな一緒に、空の上から地上へ――。'],
     buried:['生き埋めエンド','救助の猫は来なかった。崩れた天井の下、かけらの青い光だけが静かに瞬いている…']}[kind];
   setTimeout(()=>{
@@ -1562,6 +2076,18 @@ function startEnding(kind){
     $('endtitle').onclick=()=>{document.body.classList.remove('cine');toTitle();};
   },kind==='buried'?2200:kind==='secret'?SECRET_LEN*1000:1800);
   if(kind==='secret'){}else if(kind==='buried'){tone(60,2,'sawtooth',.07,-30);}else [523,659,784,1046,1318,1568].forEach((f,i)=>setTimeout(()=>tone(f,.2,'triangle',.06),i*140));
+}
+/* the endings: the dogs who fled the collapse sit with the cats around a campfire */
+function drawEndingCamp(cx,gy,k,t){
+  const sc=SC*1.05;
+  // campfire in front of everyone
+  const fx=cx,fy=gy+30*SC;ctx.fillStyle='#4a3020';ctx.fillRect(fx-22*SC,fy-4*SC,44*SC,7*SC);
+  for(let i=0;i<3;i++){const fl=Math.sin(t*9+i*2)*4*SC;ctx.fillStyle=['#ff5a2a','#ffa03a','#ffe07a'][i];ctx.beginPath();ctx.moveTo(fx-(14-i*4)*SC,fy);ctx.quadraticCurveTo(fx+fl,fy-(40-i*8)*SC,fx+(14-i*4)*SC,fy);ctx.fill();}
+  const gl=ctx.createRadialGradient(fx,fy-10*SC,4,fx,fy-10*SC,120*SC);gl.addColorStop(0,'rgba(255,190,90,.35)');gl.addColorStop(1,'rgba(255,190,90,0)');ctx.fillStyle=gl;ctx.beginPath();ctx.arc(fx,fy-10*SC,120*SC,0,7);ctx.fill();
+  // the dog force, off duty
+  const dogs=k==='party'?['captain','dog','scout','squad','dog','sniper','defender','dog']:['dog','scout','dog'];
+  dogs.forEach((type,i)=>{const side=i%2?1:-1,row=Math.floor(i/2),x=cx+side*(120+row*46)*SC,y=gy+(6+row*6)*SC,hop=k==='party'?Math.abs(Math.sin(t*4+i*1.3))*8*SC:Math.abs(Math.sin(t*1.5+i))*2*SC;
+    ctx.save();ctx.translate(x,y-hop);ctx.scale(sc,sc);drawDog({type,x:0,y:0,moving:k==='party',dir:[-side,0],bob:i,alertT:0,face:[-side,0]},0,0);ctx.restore();});
 }
 function drawEnding(){
   ctx.setTransform(DPR,0,0,DPR,0,0);const t=tNow,k=S.endKind;
@@ -1577,6 +2103,7 @@ function drawEnding(){
   const cx=W/2,gy=H*.78,s=SC*1.3;
   ctx.save();ctx.translate(cx,gy);ctx.scale(s,s);drawPlayer(0,0,true);ctx.restore();
   const n=k==='party'?S.cats:Math.min(S.cats,6);
+  drawEndingCamp(cx,gy,k,t);
   for(let i=0;i<n;i++){const side=i%2?1:-1,row=Math.floor(i/2),x=cx+side*(50+row*34)*SC*.8,b=Math.abs(Math.sin(t*5+i))*14;drawKitten(x,gy-18*SC-b,.6*SC,t+i,i);}
   if(k==='party')for(let i=0;i<60;i++){const x=hash(i,13)*W,y=((hash(i,17)*H)+t*(60+hash(i,19)*80))%H;ctx.fillStyle=['#ff6f91','#ffd34d','#7dff9a','#3cc6e6','#d6a8ff'][i%5];ctx.save();ctx.translate(x,y);ctx.rotate(t*3+i);ctx.fillRect(-4,-2,8,4);ctx.restore();}
 }
@@ -1617,9 +2144,11 @@ function startStageSelect(floor,story){
 function rushSetup(t){
   const B=S.boss,G=S.great,sec=S.sections[G.s],c=(sec.G-1)/2,P=S.P;
   if(t==='amida'){B.max=B.hp=BULL_PHASE_BOMBS*3;B.phaseHits=0;} // 3 phases x 4 bombs
-  if(t==='ball'){ // a second ball with its own 3 hit points
-    const b=Object.create(B);Object.assign(b,{cx:B.cx+3,cy:B.cy,vx:0,vy:0,mode:'idle',t:1.8,spin:0,bounces:0,dropZ:200,php:3});
-    B.php=3;B.max=B.hp=6;B.clones=[b];}
+  if(t==='ball'){ // two more balls, each with its own 3 hit points
+    const mk=(dx,dy,t0)=>{const b=Object.create(B);Object.assign(b,{cx:B.cx+dx,cy:B.cy+dy,vx:0,vy:0,mode:'idle',t:t0,spin:0,bounces:0,dropZ:200,php:3});return b;};
+    B.php=3;B.max=B.hp=9;B.clones=[mk(3,0,1.8),mk(-3,0,2.4)];}
+  if(t==='swat'){ // a second sniper on the other tower
+    const tw=B.towers[1];if(tw){const sn={...B.units.find(u=>u.role==='sniper'),x:tw.x,y:tw.y,tx:tw.x,ty:tw.y,onTower:tw,hp:2,max:2,cd:3.2,bob:Math.random()*6};B.units.splice(1,0,sn);}B.max=B.hp=B.units.reduce((a,u)=>a+u.hp,0);B.callT=8;rushSwatBlocks(B);}
   if(t==='guardian'){ // the guardian needs its body and the water cannons, plus pillars to hide behind
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)S.tile.set(K(G.hx+dx,G.hy+dy),3);
     if(Math.abs(P.x-G.hx)<=1&&Math.abs(P.y-G.hy)<=1){P.x=P.tx=G.hx;P.y=P.ty=G.hy+3;P.moving=false;}
@@ -1812,6 +2341,7 @@ function genBoss(s,ox,oy,G,start){
     if(edge){if(!S.tile.has(k)){S.tile.set(k,1);S.sec.set(k,s);}continue;}
     let t=0;if(btype==='guardian'&&Math.abs(x-c)<=1&&Math.abs(y-c)<=1)t=3;else if(btype!=='amida'&&btype!=='great'&&(x===3||x===G-4)&&(y===3||y===G-4))t=1;
     S.tile.set(k,t);S.sec.set(k,s);}
+  if(btype==='swat')swatLayout(s,ox,oy,G,start);
   const next=Math.random()<.5?'e':'s';
   S.sections[s]={ox,oy,G,next,theme:zoneOf(s)%THEMES.length,start,boss:true,dry:true,z:zFor(s),btype};
   // drain grates around the entrance: the flood stops here
@@ -1823,11 +2353,11 @@ function genBoss(s,ox,oy,G,start){
   S.doors[s]={x:ch.door[0],y:ch.door[1],inner:ch.inner,s,type:'boss',need:0,count:0,open:false,perm:false,hasKey:false,timer:0,dur:0,anim:0};if(!lastHall)S.doorAt.set(dk,s);
   if(btype==='dice')placeSpearSwitches(s,ox,oy,G,start,ch.inner);
   if(btype==='ball')placePitSwitches(s,ox,oy,G,start,ch.inner);
-  if(btype!=='amida'&&btype!=='dice'&&btype!=='ball'&&btype!=='great')for(const [px,py] of [[c,2],[c,G-3],[2,c],[G-3,c]]){const k=K(ox+px,oy+py);S.feat.set(k,{type:'plate',door:s,lit:false});}
+  if(btype!=='amida'&&btype!=='dice'&&btype!=='ball'&&btype!=='great')for(const [px,py] of [[c,2],[c,G-3],[2,c],[G-3,c]]){const k=K(ox+px,oy+py);S.tile.set(k,0);S.feat.set(k,{type:'plate',door:s,lit:false});}
   for(const [px,py] of [[1,G-2],[G-2,1],[2,G-3],[G-3,2]]){const k=K(ox+px,oy+py);if(!S.feat.has(k)&&S.tile.get(k)===0&&!S.grates.has(k))S.feat.set(k,{type:'coin'});}
 }
 const BOSS_ORDER=['ball','dice','guardian','amida'];
-const BOSS_NAMES={ball:'転がる大玉',dice:'気まぐれ大賽',guardian:null,amida:'あみだ角牛'};
+const BOSS_NAMES={ball:'転がる大玉',dice:'気まぐれ大賽',guardian:null,amida:'あみだ角牛',swat:'犬の特殊部隊'};
 function startBoss(s){
   if(S.sections[s].btype==='great'){startGreat(s);return;}
   const sec=S.sections[s],z=zoneOf(s),c=(sec.G-1)/2,loop=Math.floor(z/BOSS_ORDER.length),type=sec.btype;
@@ -1838,14 +2368,14 @@ function startBoss(s){
     vx:0,vy:0,mode:'idle',t:1.2,spin:0,bounces:0,
     // dice
     ix:hx,iy:hy,fx:hx,fy:hy,tt:0,steps:0,face:1,hop:0};
-  S.drainT=0;S.shots=[];S.rings=[];S.falls=[];S.bossHeart=S.hearts;S.boss.clones=[];S.boss.php=S.boss.hp;S.spears=[];S.spearQ=[];if(S.boss.type==='dice'){S.boss.size=4;S.boss.max=S.boss.hp=diceHits(4,false);}S.spearRespawn=[];
+  S.drainT=0;S.shots=[];S.rings=[];S.falls=[];S.bossHeart=S.hearts;S.boss.clones=[];S.boss.php=S.boss.hp;S.spears=[];S.spearQ=[];if(S.boss.type==='dice'){S.boss.size=4;S.boss.max=S.boss.hp=diceHits(4,false);}if(S.boss.type==='swat')startSwat(S.boss);S.spearRespawn=[];
   bannerShow(`最深部 B${s+1}F`,S.boss.name,2.4);tone(110,.7,'sawtooth',.06,-40);setTimeout(()=>tone(82,.9,'sawtooth',.06,-20),250);
 }
 function lightVolley(){const B=S.boss,pl=[];for(const f of S.feat.values())if(f.type==='plate'&&f.door===B.s)pl.push(f);
   pl.sort(()=>Math.random()-.5);B.got=0;for(let i=0;i<pl.length;i++)pl[i].lit=i<B.need;tone(1200,.12,'sine',.05);}
 function hurt(src){if(S.inv>0||S.dodgeT>0||S.state!=='play')return;if(S.guard&&!(S.pStun>0)&&guardFacing(src)){guardBlock(src);return;}if(loseHeart())bannerShow('','被弾！ 衝撃波を放った',1.1);}
 const bossRadius=B=>B.type==='guardian'?1.6:1;
-function bossKilled(B,msg){if(S.testMode)return;if(!META.stats.bossTypes.includes(B.type)){META.stats.bossTypes.push(B.type);saveMeta();}trophy('boss_'+B.type);if(msg==='衝撃波')trophy('wave_kill');if(S.hearts>=S.bossHeart)trophy('nodmg_boss');}
+function bossKilled(B,msg){if(S.testMode)return;if(ARCHIVES.some(a=>a.id==='b_'+B.type))archiveCollect('b_'+B.type);if(!META.stats.bossTypes.includes(B.type)){META.stats.bossTypes.push(B.type);saveMeta();}trophy('boss_'+B.type);if(msg==='衝撃波')trophy('wave_kill');if(S.hearts>=S.bossHeart)trophy('nodmg_boss');}
 function damageBoss(B,msg){
   B.hp--;B.flash=.7;B.stun=1.6;S.score+=200;S.shots=[];S.rings=[];tone(220,.3,'square',.07,-150);burst(B.cx,B.cy,'#bff3ff',18);
   if(B.type==='ball'){B.vx=B.vy=0;B.mode='idle';B.t=2;}
@@ -1864,8 +2394,9 @@ function updWaves(dt){
     S.shots=S.shots.filter(p=>Math.abs(Math.hypot(p.x-w.x,p.y-w.y)-w.r)>.5||!waveSees(w,p.x,p.y,0));
     if(B&&B.type==='dice'&&B.dying<=0&&!w.hit){for(const d of [B,...(B.clones||[])]){if(Math.abs(Math.hypot(d.cx-w.x,d.cy-w.y)-w.r)<.9&&waveSees(w,d.cx,d.cy,.5)){w.hit=true;hitDie(d,'衝撃波');break;}}}
     else if(B&&B.type==='ball'&&B.dying<=0&&!w.hit){for(const b of [B,...(B.clones||[])]){if(Math.abs(Math.hypot(b.cx-w.x,b.cy-w.y)-w.r)<1.1&&waveSees(w,b.cx,b.cy,.5)){w.hit=true;ballHit(b,'衝撃波');break;}}}
+    else if(B&&B.type==='swat'&&B.dying<=0){for(const u of B.units){if(u.hp<=0||(w.hitU||(w.hitU=new Set())).has(u))continue;const [mx,my]=mobPos(u);if(Math.abs(Math.hypot(mx-w.x,my-w.y)-w.r)<.7&&waveSees(w,mx,my,0)){w.hitU.add(u);swatHit(u,'衝撃波',{x:w.x,y:w.y});}}}
     else if(B&&B.dying<=0&&!w.hit&&!(B.type==='guardian'&&B.rush)){const dd=Math.hypot(B.cx-w.x,B.cy-w.y),br=bossRadius(B);if(w.r>=dd-br&&w.r<=dd+br&&waveSees(w,B.cx,B.cy,br)){w.hit=true;damageBoss(B,'衝撃波');}}}
-  for(const w of S.waves)S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.abs(Math.hypot(mx-w.x,my-w.y)-w.r)<.6&&waveSees(w,mx,my,0)){burst(mx,my,'#7fd8f0',10);return false;}return true;});
+  for(const w of S.waves)S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.abs(Math.hypot(mx-w.x,my-w.y)-w.r)<.6&&waveSees(w,mx,my,0)&&!(w.hitM||(w.hitM=new Set())).has(m)){w.hitM.add(m);if(!mobHit(m,w.x,w.y))return true;burst(mx,my,'#7fd8f0',10);return false;}return true;});
   S.waves=S.waves.filter(w=>w.r<w.max);
 }
 const solidForBoss=(x,y)=>{const t=S.tile.get(K(Math.round(x),Math.round(y)));return t!==0&&t!==6;};
@@ -1942,12 +2473,13 @@ function updBoss(dt){
   else if(B.type==='guardian'||B.type==='great')guardianAI(B,dt);
   else if(B.type==='ball'){ballAI(B,dt);for(const c of B.clones||[])ballAI(c,dt);}
   else if(B.type==='amida')amidaAI(B,dt);
+  else if(B.type==='swat')swatAI(B,dt);
   else if(B.type==='dice'){for(const d of [B,...(B.clones||[])])if(!diceKick(d,dt))diceAI(d,dt);}
   if(B.type==='guardian')updLaser(B,dt); // the laser keeps its own timer, even while stunned
   const [fx,fy]=pPos();
   if(B.clones&&B.stun<=0)for(const c of B.clones)if(Math.hypot(fx-c.cx,fy-c.cy)<(B.type==='ball'?1:.75*diceScale(c)))hurt(c);
   if(B.type!=='guardian'&&B.stun<=0&&Math.hypot(fx-B.cx,fy-B.cy)<(B.type==='ball'?1:B.type==='amida'?.85:B.type==='dice'?.75*diceScale(B):.75))hurt(B);
-  for(const p of S.shots){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;const t=S.tile.get(K(Math.round(p.x),Math.round(p.y)));if(t!==0&&t!==3)p.life=0;if(!p.glanced&&Math.hypot(p.x-fx,p.y-fy)<.45){if(S.guard&&!(S.pStun>0)&&guardFacing(p))glanceShot(p,fx,fy);else{hurt(p);p.life=0;}}}
+  for(const p of S.shots){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;const t=S.tile.get(K(Math.round(p.x),Math.round(p.y)));if(t!==0&&t!==3)shotWall(p,dt);if(p.glanced&&p.life>0)shotHitsSwat(p);if(!p.glanced&&Math.hypot(p.x-fx,p.y-fy)<.45){if(S.guard&&!(S.pStun>0)&&guardFacing(p))glanceShot(p,fx,fy);else{hurt(p);p.life=0;}}}
   S.shots=S.shots.filter(p=>p.life>0);
   for(const r of S.rings){r.r+=3*dt;if(Math.abs(Math.hypot(fx-r.x,fy-r.y)-r.r)<.3)hurt(r);}
   S.rings=S.rings.filter(r=>r.r<r.max);
@@ -1960,7 +2492,9 @@ function drawChargerCores(){
 }
 function setChargers(on){for(const f of S.feat.values())if(f.type==='plate'&&f.charger)f.lit=on;}
 function firePlate(f,x,y){
-  const B=S.boss;if(B.type==='guardian'&&B.rush){if(!S.shieldPow&&!S.shieldCharging){
+  const B=S.boss;if(B.type==='swat'){f.lit=false;B.got++;const alive=B.units.filter(u=>u.hp>0&&!u.onTower).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y));const u=alive[0];if(!u)return;
+    S.jets.push({x0:x,y0:y,x1:u.x,y1:u.y,t:.6});tone(500,.3,'sawtooth',.04,500);if(B.got<B.need){bannerShow('',`放水砲 ${B.got} / ${B.need}`,.9);return;}swatHit(u,'放水砲',{x,y});return;}
+  if(B.type==='guardian'&&B.rush){if(!S.shieldPow&&!S.shieldCharging){
       S.shieldCharging=true;setChargers(false);S.jets.push({x0:x,y0:y,x1:B.cx,y1:B.cy,t:.6});tone(500,.3,'sawtooth',.04,500);
       setTimeout(()=>{if(!S.boss||S.boss!==B)return;burst(B.cx,B.cy,'#bff3ff',10);tone(160,.25,'square',.05,-40);bannerShow('','……効いていない！',.9);},500);
       setTimeout(()=>{S.shieldCharging=false;if(!S.boss||S.boss!==B||B.dying>0)return;S.shieldPow=true;const [fx,fy]=pPos();burst(fx,fy,'#8fe3f5',18);[660,990,1320].forEach((q,i)=>setTimeout(()=>tone(q,.12,'triangle',.05),i*70));bannerShow('','盾に不思議な力が宿っている',2);},1400);}return;}f.lit=false;B.got++;S.jets.push({x0:x,y0:y,x1:B.cx,y1:B.cy,t:.6});tone(500,.3,'sawtooth',.04,500);
@@ -1968,6 +2502,7 @@ function firePlate(f,x,y){
   damageBoss(B,'');
 }
 function finishBoss(){
+  if(S.boss&&S.boss.type==='swat')S.mobs=S.mobs.filter(m=>{if(m.swatMinion&&m.s===S.boss.s){burst(m.x,m.y,'#7fd8f0',8);return false;}return true;});
   const B=S.boss,sec=S.sections[B.s],dr=S.doors[B.s];
   for(const [k,t] of S.tile)if((t===3||t===4||t===5||t===7)&&S.sec.get(k)===B.s)S.tile.set(k,0);
   S.falls=[];S.rungs.clear();
@@ -2028,7 +2563,7 @@ function deflectEnemy(src,fx,fy){
 }
 function glanceShot(p,fx,fy){
   const [nx,ny]=shieldNormal(p.x,p.y,fx,fy),dot=p.vx*nx+p.vy*ny;if(dot<0){p.vx-=2*dot*nx;p.vy-=2*dot*ny;}
-  p.x=fx+nx*.6;p.y=fy+ny*.6;p.glanced=true;burst(p.x,p.y,'#ffe98a',6);tone(1300,.06,'square',.04,-300);
+  p.x=fx+nx*.6;p.y=fy+ny*.6;p.glanced=true;p.ric=3;p.life=Math.max(p.life,3);burst(p.x,p.y,'#ffe98a',6);tone(1300,.06,'square',.04,-300);
 }
 function bounceMob(m,fx,fy){
   if(m.moving&&(m.tx-m.x)*(fx-m.x)+(m.ty-m.y)*(fy-m.y)>0){[m.x,m.tx]=[m.tx,m.x];[m.y,m.ty]=[m.ty,m.y];m.p=1-m.p;}if(m.dir)m.dir=[-m.dir[0],-m.dir[1]];m.fleeT=1.2;
@@ -2194,18 +2729,24 @@ function rushAmidaAI(B,dt){
 // the bash deals 1 damage (more with the shop item); the white guardian and a charging bull just shrug it off
 function bashDamage(B,part){
   const n=1+(S.up.bash||0);
-  if(B.type==='ball'){for(let i=0;i<n&&S.boss&&B.dying<=0;i++){const alive=[B,...(B.clones||[])];const t=alive.includes(part)?part:alive[0];ballHit(t,'盾突進');}}
-  else if(B.type==='dice'){ // the struck die, then the nearest others, one hit each
+  if(B.type==='dice'){ // the struck die, then the nearest others, one hit each
     const order=[part,...[B,...B.clones].filter(d=>d!==part).sort((a,b)=>Math.hypot(a.cx-part.cx,a.cy-part.cy)-Math.hypot(b.cx-part.cx,b.cy-part.cy))];
     for(let i=0;i<n&&i<order.length&&S.boss&&B.dying<=0;i++){B.flash=0;hitDie(order[i],'盾突進');}}
-  else if(B.type==='great'){if(B.exposed>0&&B.flash<=0){damageBoss(B,'盾突進');B.exposed=0;B.shell=2;if(S.boss&&B.hp>0)sproutGreatBombs();}else bannerShow('','ガキン！ 殻が硬い',.8);}
-  else for(let i=0;i<n&&S.boss&&B.dying<=0;i++)damageBoss(B,'盾突進');
+  else bannerShow('','ガキン！ 突進が効かない',.8);
 }
 function shieldBash(dt){
   const D=S.dash,[fx,fy]=pPos(),P=S.P;
-  S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.hypot(mx-fx,my-fy)<1){burst(mx,my,'#9fe8ff',12);tone(900,.1,'square',.05,-300);return false;}return true;});
+  let bounced=false;
+  S.mobs=S.mobs.filter(m=>{const [mx,my]=mobPos(m);if(Math.hypot(mx-fx,my-fy)<1&&!D.hit.has(m)){D.hit.add(m);if(!mobHit(m,fx,fy)){if(m.type!=='camera')bounced=true;return true;}burst(mx,my,'#9fe8ff',12);tone(900,.1,'square',.05,-300);return false;}return true;});
+  if(bounced){S.dash={dir:[-D.dir[0],-D.dir[1]],left:1,stop:true,kb:true,t:0,dur:.25};S.inv=Math.max(S.inv,.6);P.dir=null;P.q=null;tone(160,.2,'square',.06,-40);bannerShow('','ガキン！ 押し返された',.7);return;}
   const nShots=S.shots.length;S.shots=S.shots.filter(p=>Math.hypot(p.x-fx,p.y-fy)>.8);if(S.shots.length<nShots)tone(1200,.06,'square',.03);
   const B=S.boss;if(!B||B.dying>0||D.hit.has(B))return;
+  if(B.type==='swat'){for(const u of B.units){if(u.hp<=0||u.onTower||D.hit.has(u))continue;const [mx,my]=mobPos(u);if(Math.hypot(mx-fx,my-fy)>(u.role==='defender'?1.4:1))continue;D.hit.add(u);
+    if(u.role==='sniper'&&u.stun>0)swatHit(u,'盾突進');
+    else if(u.role==='defender'&&u.rage)swatHit(u,'盾突進');
+    else if(u.role==='defender'){shoveMob(u,fx,fy,3);u.stagT=1.4;u.shoveCd=Math.max(u.shoveCd||0,1.6);for(let i=0;i<2;i++)burst(mx,my,'#ffe98a',12);tone(120,.35,'square',.07,-40);bannerShow('','ガキン！ ディフェンダーが大きくのけぞった',1);}
+    else bannerShow('','ガキン！ 突進が効かない',.8);
+    S.dash={dir:[-D.dir[0],-D.dir[1]],left:1,stop:true,kb:true,t:0,dur:.25};S.inv=Math.max(S.inv,.6);P.dir=null;P.q=null;return;}return;}
   const parts=[B,...(B.clones||[])],reach=b=>B.type==='guardian'||B.type==='great'?1.9:B.type==='amida'?1.15:B.type==='dice'?.8*diceScale(b)+.3:1;
   const hitPart=parts.filter(b=>Math.hypot(b.cx-fx,b.cy-fy)<reach(b)).sort((a,b)=>Math.hypot(a.cx-fx,a.cy-fy)-Math.hypot(b.cx-fx,b.cy-fy))[0];
   if(!hitPart)return;D.hit.add(B);
@@ -2389,7 +2930,7 @@ function onArrive(){
   if(S.escape&&P.x===ORG+1&&P.y===ORG-ENT+1){startEnding(S.cats>=CATS_TOTAL?'party':'escape');return;}
   if(S.escape&&s!==undefined&&s<S.cur&&!S.doorAt.has(k)){S.cur=s;bannerShow('',`地下 ${s+1} 階`,1);}
   if(s!==undefined&&s>S.cur&&!S.doorAt.has(k)){
-    const prev=S.doors[S.cur];if(prev){if(prev.type==='timer'&&prev.open&&!prev.perm&&prev.timer<1.5)trophy('close_shave');prev.perm=true;if(prev.type==='boss'&&!prev.broken&&!prev.holding)closeBehind(prev);}
+    const prev=S.doors[S.cur];if(prev){if(prev.type==='timer'&&prev.open&&!prev.perm&&prev.timer<1.5)trophy('close_shave');prev.perm=true;if(prev.type==='boss'&&!prev.broken&&!prev.holding)closeBehind(prev);else if(prev.type!=='boss'&&!prev.broken&&!prev.holding&&!S.escape)closeGate(prev);}
     S.cur=s;if(s>S.best){S.best=s;S.score+=100*s;{const fl=s+1;if(fl>=2)trophy('b2');if(fl>=5)trophy('b5');if(fl>=10)trophy('b10');if(fl>=20)trophy('b20');}
       if(S.sections[s].boss)startBoss(s);
       else if(zoneOf(s)!==zoneOf(s-1)){bannerShow(`地下 ${s+1} 階`+(NEW_GIMMICK[zoneOf(s)]?` ・ 新しい仕掛け：${NEW_GIMMICK[zoneOf(s)]}`:''),THEMES[S.sections[s].theme].name,2.4);tone(523,.15,'triangle',.06);setTimeout(()=>tone(784,.25,'triangle',.06),120);}
@@ -2433,6 +2974,9 @@ function update(dt){
   if(S.escape)updEscape(dt);
   if(S.bigCore){S.breath=100;coreTouch();}
   for(const d of S.doors){if(d&&d.holding){
+    if(d.hourglass!=null){ // the hourglass only runs once the flood is pressing on the gate
+      if(!d.wet&&doorWet(d)){d.wet=true;bannerShow('水が門に届いた！','砂時計が落ち始めた',1.6);tone(90,.5,'sawtooth',.05,-20);}
+      if(d.wet){d.hourglass-=dt;if(d.hourglass<=0){d.hourglass=null;breakDoor(d);}}continue;}
     if(!d.wet&&doorWet(d)){d.wet=true;bannerShow('','水が扉に届いた！ 水圧がかかっていく…',1.6);tone(90,.5,'sawtooth',.05,-20);}
     if(d.wet){d.hold-=dt;if(d.hold<=0)breakDoor(d);}}}
   if(S.pressureT>0){S.pressureT-=dt;if(S.pressureT<=0)trophy('pressure');}
@@ -2451,7 +2995,7 @@ function update(dt){
   updatePlayer(dt);
   if(S.state!=='play')return;
   const [fx,fy]=pPos(),w=waterAt(Math.round(fx),Math.round(fy));
-  updRots(dt);updMobs(dt);
+  updRots(dt);updMobs(dt);updLooseShots(dt);
   if(S.shopOpen){const sf=S.feat.get(K(S.P.x,S.P.y));if(S.P.moving||!sf||sf.type!=='shop')closeShop();}
   if(w>.55&&!S.wasDeep)splash(.5);if(w>.06&&!S.wasWet)splash(.2);S.wasDeep=w>.55;S.wasWet=w>.06;
   if(w>.55){if(S.inv<=0&&!S.tank)S.breath-=34*(1-.22*S.up.tank)*dt;if(Math.random()<dt*10)S.parts.push({x:fx,y:fy,z:w*WMAX+20,vx:0,vy:0,vz:30,life:.8,max:.8,c:'#bfefff',r:3,bubble:1});
@@ -2487,6 +3031,7 @@ function goalText(){
 let heartCache='',shopWallet='';
 function updHud(){
   $('zone').textContent=`B${S.cur+1}F ・ ${THEMES[S.sections[S.cur].theme].name}`;$('score').textContent=S.score;
+  updGateHud();
   $('o2').style.width=S.breath+'%';$('o2bar').classList.toggle('low',S.breath<40);
   $('stam').style.width=S.stam+'%';$('stbar').classList.toggle('low',S.stam<dodgeCost());
   $('wallet').textContent=`● ${S.wallet}`;
@@ -2536,6 +3081,7 @@ function drawWall(x,y,cx,cy,th){
 }
 function doorColor(d){return d.type==='key'?(d.hasKey?'#ffd34d':'#c49a2a'):d.type==='timer'?'#ffc24d':(d.count>0?'#7dff9a':'#ff5a5a');}
 function drawDoorClosed(d,cx,cy){
+  if(d.holding&&d.hourglass!=null&&d.hourglass<4){const p=1-d.hourglass/4;cx+=Math.sin(tNow*45)*(.5+p*3.5);}
   if(d.holding&&d.wet){const p=1-d.hold/8;cx+=Math.sin(tNow*45)*(.5+p*3.5);if(Math.random()<p*.3)S.parts.push({x:d.x+(Math.random()-.5)*.6,y:d.y+.4,z:4,vx:0,vy:.6,vz:40,life:.4,max:.4,c:'#8fe3f5',r:2});}
   const h=WALL+8,ext=dropBelow(d.x,d.y);block(cx,cy+ext,h+ext,'#56606c');
   ctx.strokeStyle='#2a3038';ctx.lineWidth=2;ctx.beginPath();
@@ -2893,7 +3439,8 @@ function draw(){
       if(S.sources.some(p=>p[0]===x&&p[1]===y))drawSource(cx,cy);
       const f=S.feat.get(kk);if(f){if(f.type==='coin')drawCoin(cx,cy);else if(f.type==='switch'||f.type==='timer')drawSwitch(f,cx,cy);else if(f.type==='key')drawKey(cx,cy);else if(f.type==='plate')drawPlate(f,x,y,cx,cy);else if(f.type==='shop')drawShopFloor(cx,cy);else if(f.type==='lever')drawLever(f,cx,cy);else if(f.type==='archive')drawArchive(f.id,cx,cy);else if(f.type==='bombsw'||f.type==='gbomb')drawBombSw(f,cx,cy);else if(f.type==='cat')drawStrandedCat(cx,cy,S.sec.get(kk)||0);else if(f.type==='spearsw')drawSpearSw(f,cx,cy);else if(f.type==='pitsw')drawPitSw(f,cx,cy);else drawItem(f.type==='icrystal'?'ice':f.type,cx,cy);}
       if(S.armSet.has(kk)){ctx.strokeStyle='rgba(201,164,106,.35)';ctx.lineWidth=2;ctx.setLineDash([4,4]);poly2(diamond(cx,cy));ctx.setLineDash([]);}}
-    for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;const md=m.moving?Math.max(m.x+m.y,m.tx+m.ty):m.x+m.y;if(md===k){const [mx,my]=mobPos(m),[sx,sy0]=iso(mx,my);drawMob(m,sx,sy0+dep(m.x,m.y));}}
+    drawSwatUnits(k);
+    for(const m of S.mobs){if(Math.abs(m.s-S.cur)>1)continue;const md=m.moving?Math.max(m.x+m.y,m.tx+m.ty):m.x+m.y;if(md===k){const [mx,my]=mobPos(m),[sx,sy0]=iso(mx,my);if(DOG_KINDS.has(m.type))drawDog(m,sx,sy0+dep(m.x,m.y));else if(m.type==='camera')drawCamera(m,sx,sy0+dep(m.x,m.y));else if(m.type==='turret')drawTurret(m,sx,sy0+dep(m.x,m.y));else drawMob(m,sx,sy0+dep(m.x,m.y));}}
     if(k===pDiag&&!(S.state==='rescue'&&S.rescue.t>=1)&&!(S.state==='play'&&S.inv>0&&!S.dodgeT&&(tNow*14|0)%2)){const [sx,sy]=isoP();
       if(S.dash&&!S.dash.kb&&!S.dash.bash){const D=S.dash,u=clamp(D.t/D.dur,0,1),sg=Math.sign(D.dir[0]-D.dir[1])||1,hop=Math.sin(u*Math.PI)*6;
         ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(sx,sy,10,5,0,0,7);ctx.fill();
@@ -2903,7 +3450,7 @@ function draw(){
       if(t===1){drawWall(x,y,cx,cy,themeOf(x,y));if(S.rotC.has(kk))drawRotHub(x,y,cx,cy);if(mirrorOn()&&S.mirror.has(kk))drawMirror(x,y,cx,cy);}
       else if(t===4)drawArm(x,y,cx,cy);
       else if(t===5)drawFallen(x,y,cx,cy);
-      else if(t===7)drawPillar(x,y,cx,cy);
+      else if(t===7){if(!drawTower(x,y,cx,cy))drawPillar(x,y,cx,cy);}
       else if(t===2)drawDoorClosed(S.doors[S.doorAt.get(kk)],cx,cy);
       else if(t===0){const w=waterAt(x,y);if(w>.005)drawWater(x,y,cx,cy,w,col);if(S.frozen.has(kk))drawFrozen(cx,cy,x,y);const f=S.feat.get(kk);if(f&&f.type==='shop')drawShopCanopy(cx,cy);if(f&&w>.2)drawSurfaceMarker(f,x,y,cx,cy,w);}}
     if(S.guide&&S.escape&&guideDiag()===k)drawGuide(); // after the row's water so the kitten swims on top
@@ -2916,7 +3463,7 @@ function draw(){
   // boss attacks and cannon jets
   for(const r of S.rings){const [sx,sy]=isoD(r.x,r.y),fade=1-r.r/r.max;ctx.strokeStyle=`rgba(255,120,90,${.35+fade*.6})`;ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(sx,sy-4,r.r*TW/Math.SQRT2,r.r*TH/Math.SQRT2,0,0,7);ctx.stroke();
     ctx.strokeStyle=`rgba(255,220,200,${fade*.6})`;ctx.lineWidth=1.5;ctx.stroke();}
-  drawAmidaPath(S.boss);drawSpinners();drawSpears();drawGreatShadow();drawLaser();drawReflect();
+  drawAmidaPath(S.boss);drawCameraCones();drawTurretBeams();drawSpinners();drawSpears();drawGreatShadow();drawLaser();drawReflect();
   for(const f of S.falls){if(f.t<0||f.state==='stand')continue;const [sx,sy]=isoD(f.x,f.y);
     if(f.amida){ // rising from below: the floor cracks and glows, then the block pushes up
       if(f.state==='warn'){const a=clamp(f.t/f.warn,0,1);ctx.fillStyle=`rgba(90,60,30,${.2+a*.4})`;const s=.4+a*.55;poly([[sx,sy-HH*s],[sx+HW*s,sy],[sx,sy+HH*s],[sx-HW*s,sy]]);
@@ -2929,12 +3476,12 @@ function draw(){
   for(const w of S.waves){const [sx,sy]=isoD(w.x,w.y),fade=1-w.r/w.max;
     ctx.strokeStyle=`rgba(190,245,255,${fade*.9})`;ctx.lineWidth=7*fade+2;ctx.beginPath();ctx.ellipse(sx,sy-6,w.r*TW/Math.SQRT2,w.r*TH/Math.SQRT2,0,0,7);ctx.stroke();
     ctx.strokeStyle=`rgba(255,255,255,${fade})`;ctx.lineWidth=2;ctx.stroke();}
-  for(const p of S.shots){const [sx,sy]=isoD(p.x,p.y);ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(sx,sy,7,3.5,0,0,7);ctx.fill();
+  for(const p of S.shots){if(p.swat&&!p.glanced){drawTracer(p);continue;}const [sx,sy]=isoD(p.x,p.y);ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(sx,sy,7,3.5,0,0,7);ctx.fill();
     ctx.fillStyle='#4a2f6e';ctx.beginPath();ctx.arc(sx,sy-18,8,0,7);ctx.fill();ctx.fillStyle='#b48cff';ctx.beginPath();ctx.arc(sx-2.5,sy-21,3,0,7);ctx.fill();}
   for(const j of S.jets){const [ax,ay]=isoD(j.x0,j.y0),[bx,by]=isoD(j.x1,j.y1),a=clamp(j.t/.6,0,1);
     ctx.strokeStyle=`rgba(120,230,255,${a})`;ctx.lineWidth=10*a+2;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(ax,ay-20);ctx.quadraticCurveTo((ax+bx)/2,(ay+by)/2-90,bx,by-50);ctx.stroke();
     ctx.strokeStyle=`rgba(255,255,255,${a*.8})`;ctx.lineWidth=3*a;ctx.stroke();ctx.lineCap='butt';}
-  drawBigCore();drawChargerCores();
+  drawBigCore();drawChargerCores();drawMobFalls();
   const tg=S.state==='play'?targets():[];
   for(const t of tg)drawGoalMarker(t);
   for(const p of S.parts){const [sx,sy]=isoD(p.x,p.y);ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.beginPath();ctx.arc(sx,sy-p.z,p.r,0,7);if(p.bubble){ctx.strokeStyle=p.c;ctx.lineWidth=1.2;ctx.stroke();}else{ctx.fillStyle=p.c;ctx.fill();}}
