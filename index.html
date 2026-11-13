@@ -2195,7 +2195,7 @@ function updLaser(B,dt){
     const [fx,fy]=pPos();
     for(const pts of L.beams)for(let i=0;i<pts.length-1;i++){const [ax,ay]=pts[i],[bx,by]=pts[i+1];
       if(i===0){if(Math.hypot(fx-B.cx,fy-B.cy)<1.3)continue;} // the body itself is not the beam
-      if(segDist(fx,fy,ax,ay,bx,by)<.42){if(B.rush&&S.shieldPow&&S.guard&&!(S.pStun>0)&&guardFacing({x:ax,y:ay}))shieldReflect(B,L,pts,i,fx,fy);else hurt({x:ax,y:ay});break;}}
+      if(segDist(fx,fy,ax,ay,bx,by)<.42){if(B.rush&&S.shieldPow&&S.guard&&!(S.pStun>0)&&reflectFacing({x:ax,y:ay}))shieldReflect(B,L,pts,i,fx,fy);else hurt({x:ax,y:ay});break;}}
     if(L.t<=0){L.phase='wait';L.t=B.rush?Math.max(1.1,1.9-.2*(B.max-B.hp)):Math.max(2,3.2-.3*(B.max-B.hp));L.beams=[];}}
 }
 function drawLaser(){
@@ -2215,12 +2215,16 @@ function drawLaser(){
   ctx.fillStyle=L.phase==='fire'?'#fff2e8':'rgba(255,80,80,.9)';ctx.beginPath();ctx.arc(0,0,4.5+Math.sin(tNow*30)*1.5,0,7);ctx.fill();ctx.restore();
 }
 /* the empowered shield: a guarded laser bounces off it, and a bounced beam that reaches the guardian hurts it */
+// the charged shield catches a beam from anywhere in front (a half circle), wider than a normal block
+function reflectFacing(src){const [fx,fy]=pPos(),dx=src.x-fx,dy=src.y-fy,l=Math.hypot(dx,dy);if(l<.3)return true;const f=S.P.face;return (dx*f[0]+dy*f[1])/l>-.05;}
 function shieldReflect(B,L,pts,i,fx,fy){
   const [ax,ay]=pts[i],[bx,by]=pts[i+1],l=Math.hypot(bx-ax,by-ay)||1,dx=(bx-ax)/l,dy=(by-ay)/l,n=S.P.face,dot=dx*n[0]+dy*n[1],rx=dx-2*dot*n[0],ry=dy-2*dot*n[1];
   pts.length=i+1;pts.push([fx,fy]); // the beam stops at the shield
-  const r=traceLaser(fx+rx*.3,fy+ry*.3,Math.atan2(ry,rx),30);L.refl=r;
+  // aim assist: a reflection that heads anywhere near the guardian is steered straight back at it
+  let ra=Math.atan2(ry,rx);const tg=Math.atan2(B.cy-fy,B.cx-fx);let df=tg-ra;while(df>Math.PI)df-=2*Math.PI;while(df<-Math.PI)df+=2*Math.PI;if(Math.abs(df)<1.25)ra=tg;
+  const r=traceLaser(fx+Math.cos(ra)*.3,fy+Math.sin(ra)*.3,ra,30);L.refl=r;
   if(Math.random()<.4)S.parts.push({x:fx,y:fy,z:18,vx:(Math.random()-.5)*2,vy:(Math.random()-.5)*2,vz:60,life:.3,max:.3,c:'#dff8ff',r:2});
-  let hit=false;for(let j=0;j<r.length-1&&!hit;j++)if(segDist(B.cx,B.cy,r[j][0],r[j][1],r[j+1][0],r[j+1][1])<1.5)hit=true;
+  let hit=false;for(let j=0;j<r.length-1&&!hit;j++)if(segDist(B.cx,B.cy,r[j][0],r[j][1],r[j+1][0],r[j+1][1])<2.3)hit=true; // generous: the guardian is big
   if(hit&&!L.reflHit&&B.dying<=0){L.reflHit=true;damageBoss(B,'反射レーザー');tone(1500,.3,'triangle',.06,-400);
     S.shieldPow=false;setChargers(true);if(B.hp>0)setTimeout(()=>{if(S.boss&&S.boss.type==='guardian'&&S.boss.rush&&!S.shieldPow)bannerShow('','盾の輝きが消えた…',1.4);},1200);}
 }
